@@ -27,12 +27,23 @@ YC_FOLDER_ID=your_folder_id_here
 
 ### 3. Запустите парсер
 
+**Парсинг всех продуктов:**
 ```bash
 python parse_products_gpt.py
 ```
 
+**Парсинг конкретного продукта по ID:**
+```bash
+python parse_products_gpt.py --id 70
+```
+
+**Парсинг нескольких продуктов по списку ID:**
+```bash
+python parse_products_gpt.py --ids 70,71,72
+```
+
 Скрипт:
-- Прочитает все названия продуктов из `products.db`
+- Прочитает все названия продуктов из `products.db` (или указанные ID)
 - Отправит каждое название в YandexGPT для извлечения характеристик
 - Сохранит структурированные данные в таблицу `floor_covering_specs`
 

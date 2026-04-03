@@ -294,17 +294,44 @@ class TestGetYandexGPTResponse:
             assert result is None
 
     @pytest.mark.asyncio
+    async def test_successful_api_response(self):
+        """Test successful API response."""
+        with patch("parse_products_gpt.API_KEY", "test_key"), \
+             patch("parse_products_gpt.FOLDER_ID", "test_folder"), \
+             patch("parse_products_gpt.requests.post") as mock_post:
+            
+            mock_response = MagicMock()
+            mock_response.ok = True
+            mock_response.json.return_value = {
+                "result": {
+                    "alternatives": [
+                        {
+                            "message": {
+                                "text": '{"product_type": "Ламинат", "brand": "TEST"}'
+                            }
+                        }
+                    ]
+                }
+            }
+            mock_post.return_value = mock_response
+            
+            result = await get_yandex_gpt_response("Test product")
+            
+            assert result == '{"product_type": "Ламинат", "brand": "TEST"}'
+            mock_post.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_api_error_handling(self):
         """Test handling of API errors."""
         with patch("parse_products_gpt.API_KEY", "test_key"), \
              patch("parse_products_gpt.FOLDER_ID", "test_folder"), \
-             patch("parse_products_gpt.YandexGPT") as mock_yandex_gpt:
+             patch("parse_products_gpt.requests.post") as mock_post:
             
-            mock_instance = MagicMock()
-            mock_instance.get_async_completion = AsyncMock(
-                side_effect=Exception("API Error")
-            )
-            mock_yandex_gpt.return_value = mock_instance
+            mock_response = MagicMock()
+            mock_response.ok = False
+            mock_response.status_code = 401
+            mock_response.text = "Unauthorized"
+            mock_post.return_value = mock_response
             
             result = await get_yandex_gpt_response("Test product")
             

@@ -2,9 +2,10 @@ import sqlite3
 import json
 import os
 import asyncio
+import argparse
+import requests
 from dotenv import load_dotenv
 from loguru import logger
-from yandex_gpt import YandexGPT, YandexGPTConfigManagerForAPIKey
 
 # Load environment variables from .env file
 load_dotenv()
@@ -12,6 +13,7 @@ load_dotenv()
 DB_PATH = "products.db"
 FOLDER_ID = os.getenv("YC_FOLDER_ID", "")
 API_KEY = os.getenv("YC_API_KEY", "")
+API_URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
 
 # Configure logger
 logger.add(
@@ -59,24 +61,37 @@ async def get_yandex_gpt_response(text: str) -> str:
     if not API_KEY or not FOLDER_ID:
         logger.error("YC_API_KEY and YC_FOLDER_ID environment variables must be set")
         return None
-    
+
     logger.debug(f"Sending request to YandexGPT for text: {text[:50]}...")
-    
-    # Initialize YandexGPT SDK
-    config = YandexGPTConfigManagerForAPIKey(
-        model_type="yandexgpt",
-        catalog_id=FOLDER_ID,
-        api_key=API_KEY
-    )
-    yandex_gpt = YandexGPT(config_manager=config)
-    
+
     # Prepare the prompt for GPT
-    prompt = f"""Проанализируй название напольного покрытия и извлеки следующие характеристики в формате JSON:
+    prompt = f"""Проанализируй название напольного покрытия и извлеки следующие характеристики в формате JSON.
 
 Название: {text}
 
+ПРАВИЛА РАЗБОРА:
+1. product_type — тип продукта (первое слово): Ламинат, Винил, LVT, SPC, Кварц-винил и т.д.
+2. brand — бренд/производитель (обычно первое-третье слово, заглавными буквами): EUROHOME, FLOORPAN, KRONOSPAN, KRONOSTAR и т.д.
+3. collection — коллекция (обычно одно-два слова ПОСЛЕ бренда, часто заглавными): MAJESTIC, LOFT, GREY, Atlantic, Дубов и т.д.
+4. model — название модели/дизайна (всё что ПОСЛЕ коллекции и ДО размеров): Дуб Викинг Золотой, Ройбуш, Эрл Грей, Улун и т.д.
+5. Размеры: ищи паттерн ЧИСЛО*ЧИСЛО*ЧИСЛОмм (например: 1285*192*8мм)
+   - length_mm — первое число
+   - width_mm — второе число  
+   - thickness_mm — третье число
+6. Упаковка: ищи паттерн в скобках (ЧИСЛОшт/уп, ЧИСЛОкв.м, ЧИСЛОуп/пал)
+   - pieces_per_pack — количество штук
+   - area_per_pack_m2 — площадь в м2
+   - packs_per_pallet — количество упаковок на паллете
+7. wear_class — класс износостойкости в конце: 32класс, 33класс и т.д.
+
+ВАЖНО:
+- Collection и model — это РАЗНЫЕ поля. Collection обычно короткое (1-2 слова), model — название дизайна.
+- НЕ объединяй collection и model в одно поле!
+- Если после бренда идёт одно слово заглавными буквами — это скорее всего collection.
+- Всё что после collection и до размеров — это model.
+
 Извлеки следующие поля (если информация отсутствует, укажи null):
-- product_type: тип продукта (например: Ламинат, Винил, LVT, SPC, Кварц-винил)
+- product_type: тип продукта
 - brand: бренд/производитель
 - collection: коллекция
 - model: модель/название дизайна
@@ -87,26 +102,77 @@ async def get_yandex_gpt_response(text: str) -> str:
 - pieces_per_pack: количество штук в упаковке (число)
 - area_per_pack_m2: площадь в м2 в упаковке (число)
 - packs_per_pallet: количество упаковок на паллете (число)
-- wear_class: класс износостойкости (например: 32класс, 33класс)
+- wear_class: класс износостойкости
 
-Верни ТОЛЬКО JSON объект без дополнительного текста. Пример формата:
-{{"product_type": "Ламинат", "brand": "EUROHOME", "collection": "MAJESTIC", "model": "Дуб Викинг Золотой", "length_mm": 1285, "width_mm": 192, "thickness_mm": 8, "length_m": null, "pieces_per_pack": 9, "area_per_pack_m2": 2.22, "packs_per_pallet": 52, "wear_class": "33класс"}}"""
+Примеры правильного разбора:
+
+Пример 1:
+Название: "Ламинат EUROHOME MAJESTIC Дуб Викинг Золотой 1285*192*8мм (9шт/уп,2.22кв.м,52уп/пал) 33класс"
+Результат: {{"product_type": "Ламинат", "brand": "EUROHOME", "collection": "MAJESTIC", "model": "Дуб Викинг Золотой", "length_mm": 1285, "width_mm": 192, "thickness_mm": 8, "length_m": null, "pieces_per_pack": 9, "area_per_pack_m2": 2.22, "packs_per_pallet": 52, "wear_class": "33класс"}}
+
+Пример 2:
+Название: "Ламинат FLOORPAN GREY Ройбуш 1380*193*8мм (8шт/уп,2.131кв.м,60уп/пал) 32класс"
+Результат: {{"product_type": "Ламинат", "brand": "FLOORPAN", "collection": "GREY", "model": "Ройбуш", "length_mm": 1380, "width_mm": 193, "thickness_mm": 8, "length_m": null, "pieces_per_pack": 8, "area_per_pack_m2": 2.131, "packs_per_pallet": 60, "wear_class": "32класс"}}
+
+Пример 3:
+Название: "Ламинат KRONOSPAN Atlantic Дуб Сильвердейл 1285*192*8мм (9шт/уп,2.22кв.м,52уп/пал) 32класс"
+Результат: {{"product_type": "Ламинат", "brand": "KRONOSPAN", "collection": "Atlantic", "model": "Дуб Сильвердейл", "length_mm": 1285, "width_mm": 192, "thickness_mm": 8, "length_m": null, "pieces_per_pack": 9, "area_per_pack_m2": 2.22, "packs_per_pallet": 52, "wear_class": "32класс"}}
+
+Верни ТОЛЬКО JSON объект без дополнительного текста."""
 
     try:
-        # Use YandexGPT via SDK
+        # Build model URI
+        model_uri = f"gpt://{FOLDER_ID}/yandexgpt-lite/latest"
+
+        # Prepare headers and payload
+        headers = {
+            "Authorization": f"Bearer {API_KEY}",
+            "Content-Type": "application/json",
+        }
+
         messages = [
             {"role": "system", "text": "Ты - эксперт по parsingу названий напольных покрытий. Извлекай структурированные данные из текстов."},
             {"role": "user", "text": prompt}
         ]
-        
-        logger.debug("Calling YandexGPT API...")
-        completion = await yandex_gpt.get_async_completion(messages=messages)
-        response_text = completion.get("alternatives", [{}])[0].get("message", {}).get("text", "")
-        logger.debug(f"Received response from YandexGPT ({len(response_text)} chars)")
-        return response_text
-        
-    except Exception as e:
-        logger.error(f"Error calling YandexGPT: {e}")
+
+        payload = {
+            "modelUri": model_uri,
+            "completionOptions": {
+                "stream": False,
+                "temperature": 0.0,
+                "maxTokens": 1000,
+            },
+            "messages": messages,
+        }
+
+        logger.debug(f"Calling YandexGPT API: {API_URL}")
+        logger.debug(f"Model URI: {model_uri}")
+
+        # Use requests (sync) since YandexGPT API doesn't require async
+        response = requests.post(
+            API_URL,
+            headers=headers,
+            json=payload,
+            timeout=60,
+        )
+
+        if response.ok:
+            result = response.json()
+            response_text = result["result"]["alternatives"][0]["message"]["text"]
+            logger.debug(f"Received response from YandexGPT ({len(response_text)} chars)")
+            return response_text
+        else:
+            logger.error(f"YandexGPT API error {response.status_code}: {response.text}")
+            return None
+
+    except requests.exceptions.Timeout:
+        logger.error("YandexGPT request timeout")
+        return None
+    except requests.exceptions.RequestException as e:
+        logger.error(f"YandexGPT request error: {e}")
+        return None
+    except KeyError as e:
+        logger.error(f"YandexGPT response parsing error: {e}")
         return None
 
 
@@ -207,15 +273,25 @@ def save_parsed_specs(conn, product_id: int, specs: dict):
     conn.commit()
 
 
-async def parse_all_products(conn):
-    """Parse all products and save to floor_covering_specs."""
+async def parse_all_products(conn, product_ids=None):
+    """Parse all products or specific product IDs.
+    
+    Args:
+        conn: Database connection
+        product_ids: Optional list of product IDs to parse. If None, parses all products.
+    """
     cursor = conn.cursor()
     
-    # Get all products
-    cursor.execute("SELECT id, name FROM products")
-    products = cursor.fetchall()
-    
-    logger.info(f"Found {len(products)} products to parse")
+    # Get products - either specific IDs or all
+    if product_ids:
+        placeholders = ','.join('?' for _ in product_ids)
+        cursor.execute(f"SELECT id, name FROM products WHERE id IN ({placeholders})", product_ids)
+        products = cursor.fetchall()
+        logger.info(f"Found {len(products)} products for IDs: {product_ids}")
+    else:
+        cursor.execute("SELECT id, name FROM products")
+        products = cursor.fetchall()
+        logger.info(f"Found {len(products)} products to parse")
     
     success_count = 0
     fail_count = 0
@@ -246,10 +322,18 @@ async def parse_all_products(conn):
     logger.error(f"Failed: {fail_count}")
 
 
-async def main_async():
-    """Main async function to orchestrate parsing."""
+async def main_async(product_ids=None):
+    """Main async function to orchestrate parsing.
+    
+    Args:
+        product_ids: Optional list of product IDs to parse. If None, parses all products.
+    """
     logger.info("Starting YandexGPT product parsing...")
     logger.info(f"Database: {DB_PATH}")
+    if product_ids:
+        logger.info(f"Parsing specific product IDs: {product_ids}")
+    else:
+        logger.info("Parsing ALL products")
     
     # Connect to database
     conn = sqlite3.connect(DB_PATH)
@@ -260,7 +344,7 @@ async def main_async():
         logger.success("floor_covering_specs table created/verified")
         
         # Parse all products
-        await parse_all_products(conn)
+        await parse_all_products(conn, product_ids=product_ids)
         
     except Exception as e:
         logger.error(f"Error: {e}")
@@ -273,8 +357,50 @@ async def main_async():
 
 def main():
     """Entry point that runs the async main function."""
+    parser = argparse.ArgumentParser(
+        description='Parse product names from database using YandexGPT',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Parse all products
+  python parse_products_gpt.py
+  
+  # Parse specific product by ID
+  python parse_products_gpt.py --id 70
+  
+  # Parse multiple products by IDs
+  python parse_products_gpt.py --ids 70,71,72
+        """
+    )
+    
+    parser.add_argument(
+        '--id',
+        type=int,
+        help='Parse a single product by ID'
+    )
+    
+    parser.add_argument(
+        '--ids',
+        type=str,
+        help='Parse multiple products by comma-separated IDs (e.g., 70,71,72)'
+    )
+    
+    args = parser.parse_args()
+    
+    # Determine which products to parse
+    product_ids = None  # None means parse all
+    
+    if args.id:
+        product_ids = [args.id]
+    elif args.ids:
+        try:
+            product_ids = [int(x.strip()) for x in args.ids.split(',')]
+        except ValueError:
+            logger.error("Invalid IDs format. Use comma-separated integers (e.g., 70,71,72)")
+            raise SystemExit(1)
+    
     try:
-        asyncio.run(main_async())
+        asyncio.run(main_async(product_ids=product_ids))
     except KeyboardInterrupt:
         logger.warning("Parsing interrupted by user")
     except Exception as e:
