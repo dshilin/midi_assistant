@@ -2,7 +2,11 @@ import sqlite3
 import json
 import os
 import asyncio
+from dotenv import load_dotenv
 from yandex_gpt import YandexGPT, YandexGPTConfigManagerForAPIKey
+
+# Load environment variables from .env file
+load_dotenv()
 
 DB_PATH = "products.db"
 FOLDER_ID = os.getenv("YC_FOLDER_ID", "")
