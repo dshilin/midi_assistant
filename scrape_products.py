@@ -16,6 +16,7 @@ def create_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             url TEXT,
+            price TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -40,19 +41,42 @@ def scrape_products(url):
     # Navigation items to filter out
     skip_names = {"главная", "каталог", "напольные покрытия", "корзина", "контакты"}
 
-    # Primary selector for this website
-    selector = ".catalog-table__info-title"
-    elements = soup.select(selector)
+    # Try common e-commerce patterns for product titles
+    selectors = [
+        ".catalog-table__info-title",
+        ".product-item .name",
+        ".product-item .title",
+        ".product-title",
+        ".product-name",
+        ".catalog-item .name",
+        ".catalog-item .title",
+        "[itemprop='name']",
+        ".item-title",
+        ".product-card .name"
+    ]
 
-    for elem in elements:
-        name = elem.get_text(strip=True)
-        if name and name.lower() not in skip_names:
-            # Try to find product link
-            link_elem = elem.find_parent("a")
-            product_url = None
-            if link_elem:
-                product_url = urljoin(url, link_elem.get("href", ""))
-            products.append((name, product_url))
+    for selector in selectors:
+        elements = soup.select(selector)
+        if elements:
+            for elem in elements:
+                name = elem.get_text(strip=True)
+                if name and name.lower() not in skip_names:
+                    # Try to find product link
+                    link_elem = elem.find("a")
+                    product_url = None
+                    if link_elem:
+                        product_url = urljoin(url, link_elem.get("href", ""))
+                    
+                    # Find price: go up to .catalog-item and find .price__new-val
+                    price = None
+                    catalog_item = elem.find_parent(class_="catalog-item")
+                    if catalog_item:
+                        price_elem = catalog_item.select_one(".price__new-val")
+                        if price_elem:
+                            price = price_elem.get_text(strip=True)
+                    
+                    products.append((name, product_url, price))
+            break  # Found products with this selector, stop trying others
 
     return products
 
@@ -61,7 +85,7 @@ def save_products(conn, products):
     """Save products to the database."""
     cursor = conn.cursor()
     cursor.executemany(
-        "INSERT INTO products (name, url) VALUES (?, ?)",
+        "INSERT INTO products (name, url, price) VALUES (?, ?, ?)",
         products
     )
     conn.commit()
@@ -86,12 +110,14 @@ def main():
         
         # Display saved products
         cursor = conn.cursor()
-        cursor.execute("SELECT name, url FROM products")
+        cursor.execute("SELECT name, url, price FROM products")
         print("\nProducts:")
-        for name, url in cursor.fetchall():
+        for name, url, price in cursor.fetchall():
             print(f"  - {name}")
             if url:
                 print(f"    URL: {url}")
+            if price:
+                print(f"    Price: {price}")
     else:
         print("No products found. The website structure may have changed.")
     
