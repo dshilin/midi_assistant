@@ -3,6 +3,7 @@ import json
 import os
 import asyncio
 from dotenv import load_dotenv
+from loguru import logger
 from yandex_gpt import YandexGPT, YandexGPTConfigManagerForAPIKey
 
 # Load environment variables from .env file
@@ -11,6 +12,20 @@ load_dotenv()
 DB_PATH = "products.db"
 FOLDER_ID = os.getenv("YC_FOLDER_ID", "")
 API_KEY = os.getenv("YC_API_KEY", "")
+
+# Configure logger
+logger.add(
+    "logs/parser_{time:YYYY-MM-DD}.log",
+    rotation="1 day",
+    retention="30 days",
+    level="DEBUG",
+    encoding="utf-8"
+)
+logger.add(
+    lambda msg: print(msg, end=""),
+    level="INFO",
+    format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>"
+)
 
 
 def create_floor_covering_specs_table(conn):
@@ -36,13 +51,16 @@ def create_floor_covering_specs_table(conn):
         )
     """)
     conn.commit()
+    logger.debug("floor_covering_specs table verified/created")
 
 
 async def get_yandex_gpt_response(text: str) -> str:
     """Send text to YandexGPT and get parsed response."""
     if not API_KEY or not FOLDER_ID:
-        print("Error: YC_API_KEY and YC_FOLDER_ID environment variables must be set")
+        logger.error("YC_API_KEY and YC_FOLDER_ID environment variables must be set")
         return None
+    
+    logger.debug(f"Sending request to YandexGPT for text: {text[:50]}...")
     
     # Initialize YandexGPT SDK
     config = YandexGPTConfigManagerForAPIKey(
@@ -81,12 +99,14 @@ async def get_yandex_gpt_response(text: str) -> str:
             {"role": "user", "text": prompt}
         ]
         
+        logger.debug("Calling YandexGPT API...")
         completion = await yandex_gpt.get_async_completion(messages=messages)
         response_text = completion.get("alternatives", [{}])[0].get("message", {}).get("text", "")
+        logger.debug(f"Received response from YandexGPT ({len(response_text)} chars)")
         return response_text
         
     except Exception as e:
-        print(f"Error calling YandexGPT: {e}")
+        logger.error(f"Error calling YandexGPT: {e}")
         return None
 
 
@@ -95,6 +115,7 @@ async def parse_product_name_with_gpt(product_name: str) -> dict:
     response = await get_yandex_gpt_response(product_name)
     
     if not response:
+        logger.warning(f"No response from YandexGPT for: {product_name}")
         return None
     
     try:
@@ -105,14 +126,15 @@ async def parse_product_name_with_gpt(product_name: str) -> dict:
         if start_idx != -1 and end_idx != 0:
             json_str = response[start_idx:end_idx]
             parsed_data = json.loads(json_str)
+            logger.debug(f"Successfully parsed JSON for: {product_name[:50]}...")
             return parsed_data
         else:
-            print(f"No JSON found in GPT response for: {product_name}")
+            logger.warning(f"No JSON found in GPT response for: {product_name}")
             return None
             
     except json.JSONDecodeError as e:
-        print(f"Failed to parse JSON from GPT response: {e}")
-        print(f"Response: {response}")
+        logger.error(f"Failed to parse JSON from GPT response: {e}")
+        logger.debug(f"Response: {response}")
         return None
 
 
@@ -156,6 +178,7 @@ def save_parsed_specs(conn, product_id: int, specs: dict):
             specs.get('wear_class'),
             product_id
         ))
+        logger.debug(f"Updated existing record for product_id={product_id}")
     else:
         # Insert new record
         cursor.execute("""
@@ -179,6 +202,7 @@ def save_parsed_specs(conn, product_id: int, specs: dict):
             specs.get('packs_per_pallet'),
             specs.get('wear_class')
         ))
+        logger.debug(f"Inserted new record for product_id={product_id}")
     
     conn.commit()
 
@@ -191,10 +215,13 @@ async def parse_all_products(conn):
     cursor.execute("SELECT id, name FROM products")
     products = cursor.fetchall()
     
-    print(f"Found {len(products)} products to parse")
+    logger.info(f"Found {len(products)} products to parse")
+    
+    success_count = 0
+    fail_count = 0
     
     for i, (product_id, product_name) in enumerate(products, 1):
-        print(f"\n[{i}/{len(products)}] Parsing: {product_name}")
+        logger.info(f"[{i}/{len(products)}] Parsing: {product_name}")
         
         # Parse with YandexGPT
         specs = await parse_product_name_with_gpt(product_name)
@@ -202,28 +229,27 @@ async def parse_all_products(conn):
         if specs:
             # Save to database
             save_parsed_specs(conn, product_id, specs)
-            print(f"  ✓ Saved: {specs.get('brand', 'N/A')} {specs.get('collection', 'N/A')} - {specs.get('model', 'N/A')}")
+            logger.success(f"Saved: {specs.get('brand', 'N/A')} {specs.get('collection', 'N/A')} - {specs.get('model', 'N/A')}")
+            success_count += 1
         else:
-            print(f"  ✗ Failed to parse")
+            logger.error(f"Failed to parse: {product_name}")
+            fail_count += 1
         
         # Small delay to avoid rate limiting
         if i < len(products):
-            import time
             await asyncio.sleep(0.5)
     
-    print(f"\n{'='*60}")
-    print("Parsing complete!")
-    
-    # Show summary
-    cursor.execute("SELECT COUNT(*) FROM floor_covering_specs")
-    total_parsed = cursor.fetchone()[0]
-    print(f"Total records in floor_covering_specs: {total_parsed}")
+    logger.info("=" * 60)
+    logger.info("Parsing complete!")
+    logger.info(f"Total records in floor_covering_specs: {cursor.execute('SELECT COUNT(*) FROM floor_covering_specs').fetchone()[0]}")
+    logger.success(f"Successfully parsed: {success_count}")
+    logger.error(f"Failed: {fail_count}")
 
 
 async def main_async():
     """Main async function to orchestrate parsing."""
-    print("Starting YandexGPT product parsing...")
-    print(f"Database: {DB_PATH}")
+    logger.info("Starting YandexGPT product parsing...")
+    logger.info(f"Database: {DB_PATH}")
     
     # Connect to database
     conn = sqlite3.connect(DB_PATH)
@@ -231,22 +257,29 @@ async def main_async():
     try:
         # Create table
         create_floor_covering_specs_table(conn)
-        print("✓ floor_covering_specs table created")
+        logger.success("floor_covering_specs table created/verified")
         
         # Parse all products
         await parse_all_products(conn)
         
     except Exception as e:
-        print(f"Error: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error: {e}")
+        logger.exception("Traceback:")
+        raise
     finally:
         conn.close()
+        logger.info("Database connection closed")
 
 
 def main():
     """Entry point that runs the async main function."""
-    asyncio.run(main_async())
+    try:
+        asyncio.run(main_async())
+    except KeyboardInterrupt:
+        logger.warning("Parsing interrupted by user")
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
