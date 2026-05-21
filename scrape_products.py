@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import sqlite3
 from urllib.parse import urljoin
 
-URL = "https://midiltd.ru/catalog/napolnye_pokrytiya/filter/clear/apply/?display=price&SHOWALL_1=1"
+URL =  "https://midiltd.ru/catalog/napolnye_pokrytiya/filter/in_stock-is-y/apply/?SHOWALL_1=1"
 DB_PATH = "products.db"
 
 
