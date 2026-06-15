@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>midi_assistant — консультант по напольным покрытиям</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f5; height: 100vh; display: flex; justify-content: center;
+  }
+  .chat-container {
+    width: 100%; max-width: 720px; height: 100vh;
+    display: flex; flex-direction: column;
+    background: #fff; box-shadow: 0 0 20px rgba(0,0,0,.08);
+  }
+  .chat-header {
+    padding: 16px 20px; background: #1a73e8; color: #fff;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .chat-header h1 { font-size: 18px; font-weight: 600; }
+  .chat-header p { font-size: 13px; opacity: .85; }
+  .chat-header .status {
+    width: 8px; height: 8px; border-radius: 50%; background: #34a853; flex-shrink: 0;
+  }
+  .messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+  .message {
+    max-width: 85%; padding: 12px 16px; border-radius: 12px;
+    line-height: 1.5; font-size: 14px; white-space: pre-wrap;
+  }
+  .message.user {
+    align-self: flex-end; background: #e3f2fd; color: #1565c0;
+    border-bottom-right-radius: 4px;
+  }
+  .message.bot {
+    align-self: flex-start; background: #f0f0f0; color: #333;
+    border-bottom-left-radius: 4px;
+  }
+  .message.bot.typing { color: #999; }
+  .message.bot .state-badge {
+    display: inline-block; font-size: 11px; padding: 2px 8px;
+    border-radius: 8px; background: #e0e0e0; color: #666; margin-top: 6px;
+  }
+  .input-area {
+    padding: 16px 20px; border-top: 1px solid #e0e0e0;
+    display: flex; gap: 8px; background: #fff;
+  }
+  .input-area input {
+    flex: 1; padding: 10px 14px; border: 1px solid #dadce0; border-radius: 8px;
+    font-size: 14px; outline: none;
+  }
+  .input-area input:focus { border-color: #1a73e8; }
+  .input-area button {
+    padding: 10px 20px; background: #1a73e8; color: #fff; border: none;
+    border-radius: 8px; font-size: 14px; cursor: pointer; font-weight: 500;
+  }
+  .input-area button:disabled { opacity: .5; cursor: not-allowed; }
+  .input-area button:hover:not(:disabled) { background: #1557b0; }
+  .error-msg { color: #d93025; font-size: 13px; padding: 4px 20px 0; }
+</style>
+</head>
+<body>
+<div class="chat-container">
+  <div class="chat-header">
+    <div class="status"></div>
+    <div>
+      <h1>midi_assistant</h1>
+      <p>AI-консультант по напольным покрытиям</p>
+    </div>
+  </div>
+  <div class="messages" id="messages">
+    <div class="message bot">Здравствуйте! Я помогу вам выбрать напольное покрытие. Расскажите, что вас интересует?</div>
+  </div>
+  <div id="error" class="error-msg"></div>
+  <div class="input-area">
+    <input type="text" id="input" placeholder="Напишите сообщение..." autofocus>
+    <button id="sendBtn">Отправить</button>
+  </div>
+</div>
+<script>
+const USER_ID = 'user_' + Date.now();
+const input = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+const messagesEl = document.getElementById('messages');
+const errorEl = document.getElementById('error');
+
+function addMessage(text, role, state) {
+  const div = document.createElement('div');
+  div.className = `message ${role}`;
+  div.textContent = text;
+  if (role === 'bot' && state) {
+    const badge = document.createElement('div');
+    badge.className = 'state-badge';
+    badge.textContent = `этап: ${state.stage}`;
+    div.appendChild(badge);
+  }
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function showTyping() {
+  const div = document.createElement('div');
+  div.className = 'message bot typing';
+  div.id = 'typing';
+  div.textContent = '...';
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function hideTyping() {
+  const el = document.getElementById('typing');
+  if (el) el.remove();
+}
+
+function setLoading(loading) {
+  sendBtn.disabled = loading;
+  input.disabled = loading;
+}
+
+async function sendMessage() {
+  const text = input.value.trim();
+  if (!text) return;
+
+  errorEl.textContent = '';
+  addMessage(text, 'user');
+  input.value = '';
+  showTyping();
+  setLoading(true);
+
+  try {
+    const res = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: USER_ID, message: text }),
+    });
+    if (!res.ok) throw new Error(`Ошибка ${res.status}`);
+    const data = await res.json();
+    hideTyping();
+    addMessage(data.response, 'bot', data.state);
+  } catch (err) {
+    hideTyping();
+    errorEl.textContent = 'Ошибка соединения. Попробуйте ещё раз.';
+  } finally {
+    setLoading(false);
+    input.focus();
+  }
+}
+
+input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+sendBtn.addEventListener('click', sendMessage);
+</script>
+</body>
+</html>
