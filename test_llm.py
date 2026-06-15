@@ -4,25 +4,27 @@ from llm import llm_complete
 
 
 @pytest.mark.asyncio
-async def test_llm_complete_success():
-    mock_choice = AsyncMock()
-    mock_choice.message = AsyncMock(content="test response")
-    mock_response = AsyncMock()
-    mock_response.choices = [mock_choice]
+async def test_llm_complete_openai_success():
+    with patch("llm._llm_openai", new_callable=AsyncMock) as mock:
+        mock.return_value = "test response"
+        result = await llm_complete("test prompt")
+        assert result == "test response"
 
-    mock_client = AsyncMock()
-    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-    with patch("llm.get_client", return_value=mock_client):
+@pytest.mark.asyncio
+async def test_llm_complete_yandexgpt_success():
+    with (
+        patch("llm.LLM_PROVIDER", "yandexgpt"),
+        patch("llm._llm_yandexgpt", new_callable=AsyncMock) as mock,
+    ):
+        mock.return_value = "test response"
         result = await llm_complete("test prompt")
         assert result == "test response"
 
 
 @pytest.mark.asyncio
 async def test_llm_complete_returns_none_on_error():
-    mock_client = AsyncMock()
-    mock_client.chat.completions.create = AsyncMock(side_effect=Exception("API error"))
-
-    with patch("llm.get_client", return_value=mock_client):
+    with patch("llm._llm_openai", new_callable=AsyncMock) as mock:
+        mock.side_effect = Exception("API error")
         result = await llm_complete("test prompt")
         assert result is None

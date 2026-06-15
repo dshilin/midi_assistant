@@ -1,3 +1,5 @@
+from loguru import logger
+
 STATES = [
     "discovery",
     "selection",
@@ -8,17 +10,22 @@ STATES = [
 
 
 def next_stage(state: dict) -> str:
-    stage = state.get("stage", "discovery")
+    current = state.get("stage", "discovery")
+    next_s = current
 
-    if stage == "discovery":
+    if current == "discovery":
         if state.get("type") or state.get("color"):
-            return "selection"
+            next_s = "selection"
 
-    if stage == "selection":
+    elif current == "selection":
         if state.get("selected_product"):
-            return "calculation"
+            next_s = "calculation"
 
-    if stage == "calculation":
-        return "closing"
+    elif current == "calculation":
+        next_s = "closing"
 
-    return stage
+    if next_s != current:
+        logger.debug("fsm {} → {} (type={}, color={}, product={})",
+                     current, next_s, state.get("type"), state.get("color"), state.get("selected_product"))
+
+    return next_s

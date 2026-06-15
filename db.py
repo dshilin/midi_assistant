@@ -1,5 +1,6 @@
 import sqlite3
 from typing import Dict, List, Optional
+from loguru import logger
 
 DB_PATH = "products.db"
 
@@ -16,6 +17,7 @@ def get_products(
     color: Optional[str] = None,
     limit: int = 5,
 ) -> List[Dict]:
+    logger.debug("db.get_products type={} brand={} color={}", product_type, brand, color)
     conn = get_conn()
     cursor = conn.cursor()
     query = """
@@ -45,10 +47,13 @@ def get_products(
     cursor.execute(query, params)
     rows = cursor.fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    result = [dict(r) for r in rows]
+    logger.debug("db.get_products found={}", len(result))
+    return result
 
 
 def get_product_by_id(product_id: int) -> Optional[Dict]:
+    logger.debug("db.get_product_by_id id={}", product_id)
     conn = get_conn()
     cursor = conn.cursor()
     cursor.execute("""
@@ -61,23 +66,29 @@ def get_product_by_id(product_id: int) -> Optional[Dict]:
     """, (product_id,))
     row = cursor.fetchone()
     conn.close()
+    found = row is not None
+    logger.debug("db.get_product_by_id found={}", found)
     return dict(row) if row else None
 
 
 def calculate_material(area: float, product_id: int) -> Optional[Dict]:
+    logger.debug("db.calculate_material area={} product_id={}", area, product_id)
     product = get_product_by_id(product_id)
-    if not product or not product.get("area_per_pack_m2"):
+    if not product:
+        logger.warning("db.calculate_material product not found id={}", product_id)
         return None
 
-    area_per_pack = product["area_per_pack_m2"]
-    waste_factor = 1.1
-    needed_packs = -(-int(area * waste_factor / area_per_pack) // 1)
+    area_per_pack = product.get("area_per_pack_m2")
+    if not area_per_pack:
+        logger.warning("db.calculate_material no area_per_pack for product id={}", product_id)
+        return None
 
+    waste_factor = 1.1
     packs = int(area * waste_factor / area_per_pack)
     if packs * area_per_pack < area:
         packs += 1
 
-    return {
+    result = {
         "product": product["name"],
         "area_m2": area,
         "area_per_pack_m2": area_per_pack,
@@ -85,3 +96,5 @@ def calculate_material(area: float, product_id: int) -> Optional[Dict]:
         "total_area_with_waste": round(area * waste_factor, 2),
         "waste_factor": waste_factor,
     }
+    logger.info("db.calculate_material product={} area={} packs={}", product["name"], area, packs)
+    return result
