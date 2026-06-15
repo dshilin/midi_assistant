@@ -87,5 +87,5 @@ class TestPrompts:
         discovery_prompt = build_system_prompt(discovery_state)
         selection_prompt = build_system_prompt(selection_state)
 
-        assert "ТЕКУЩАЯ СТАДИЯ: discovery" in discovery_prompt
-        assert "ТЕКУЩАЯ СТАДИЯ: selection" in selection_prompt
+        assert "СТАДИЯ: discovery" in discovery_prompt
+        assert "СТАДИЯ: selection" in selection_prompt

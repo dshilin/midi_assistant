@@ -31,7 +31,7 @@ def update_state(user_id: str, updates: Dict, stage: Optional[str] = None) -> Di
         logger.debug("user={} initialized session", user_id)
 
     for k, v in updates.items():
-        if v is not None:
+        if v is not None and str(v).lower() != "null":
             STATE[user_id][k] = v
 
     if stage:

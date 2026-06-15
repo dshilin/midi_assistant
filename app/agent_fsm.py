@@ -56,8 +56,13 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
             brand=state.get("brand"),
             color=state.get("color"),
         )
-        products_block = _format_products(products) if products else "По вашему запросу ничего не найдено в базе."
-        logger.info("agent found {} products for selection", len(products) if products else 0)
+        if products:
+            products_block = _format_products(products)
+            logger.info("agent found {} products for selection", len(products))
+        else:
+            known = {k: v for k, v in state.items() if v not in (None, "null", "selection", "objection", "calculation", "closing", "discovery") and k != "stage"}
+            products_block = f"В базе нет товаров по критериям: {known}. Предложи клиенту расширить или изменить критерии поиска."
+            logger.info("agent no products for selection criteria={}", known)
     else:
         products_block = None
 

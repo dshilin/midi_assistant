@@ -11,12 +11,21 @@ def get_conn() -> sqlite3.Connection:
     return conn
 
 
+def _clean(val):
+    if val is None or str(val).lower() == "null":
+        return None
+    return val
+
+
 def get_products(
     product_type: Optional[str] = None,
     brand: Optional[str] = None,
     color: Optional[str] = None,
-    limit: int = 5,
+    limit: int = 10,
 ) -> List[Dict]:
+    product_type = _clean(product_type)
+    brand = _clean(brand)
+    color = _clean(color)
     logger.debug("db.get_products type={} brand={} color={}", product_type, brand, color)
     conn = get_conn()
     cursor = conn.cursor()
@@ -37,7 +46,8 @@ def get_products(
         query += " AND s.brand LIKE ?"
         params.append(f"%{brand}%")
     if color:
-        query += " AND (s.collection LIKE ? OR s.model LIKE ?)"
+        query += " AND (s.collection LIKE ? OR s.model LIKE ? OR p.name LIKE ?)"
+        params.append(f"%{color}%")
         params.append(f"%{color}%")
         params.append(f"%{color}%")
 
@@ -72,6 +82,8 @@ def get_product_by_id(product_id: int) -> Optional[Dict]:
 
 
 def calculate_material(area: float, product_id: int) -> Optional[Dict]:
+    area = _clean(area)
+    product_id = _clean(product_id)
     logger.debug("db.calculate_material area={} product_id={}", area, product_id)
     product = get_product_by_id(product_id)
     if not product:
