@@ -51,11 +51,17 @@ def get_products(
     params = []
 
     if product_type:
-        query += " AND s.product_type LIKE ?"
-        params.append(f"%{product_type}%")
+        query += " AND (s.product_type LIKE ? OR s.product_type LIKE ?)"
+        p = product_type.strip()
+        capitalized = p[0].upper() + p[1:] if p else p
+        params.append(f"%{p}%")
+        params.append(f"%{capitalized}%")
     if brand:
-        query += " AND s.brand LIKE ?"
-        params.append(f"%{brand}%")
+        query += " AND (s.brand LIKE ? OR s.brand LIKE ?)"
+        b = brand.strip()
+        capitalized = b[0].upper() + b[1:] if b else b
+        params.append(f"%{b}%")
+        params.append(f"%{capitalized}%")
     if color:
         colors = set(COLOR_GROUPS.get(color, [color]))
         colors.add(color)
