@@ -74,18 +74,18 @@ class TestFSM:
 
 class TestPrompts:
     def test_build_system_prompt(self):
-        state = {"stage": "discovery", "type": None, "color": None, "area": None, "brand": None, "room_type": None}
+        state = {"stage": "discovery", "type": None, "color": None, "area": None, "brand": None, "budget": None, "room_type": None}
         prompt = build_system_prompt(state)
         assert "discovery" in prompt
         assert "AI-консультант" in prompt
-        assert "get_products" in prompt
 
     def test_prompt_changes_by_stage(self):
-        discovery_state = {"stage": "discovery", "type": None, "color": None, "area": None, "brand": None, "room_type": None}
-        selection_state = {"stage": "selection", "type": "ламинат", "color": "дуб", "area": 20, "brand": None, "room_type": "гостиная"}
+        base = {"type": None, "color": None, "area": None, "brand": None, "budget": None, "room_type": None}
+        discovery_state = {"stage": "discovery", **base}
+        selection_state = {"stage": "selection", "type": "ламинат", "color": "дуб", "area": 20, **base}
 
         discovery_prompt = build_system_prompt(discovery_state)
         selection_prompt = build_system_prompt(selection_state)
 
-        assert "Задавай вопросы" in discovery_prompt
-        assert "get_products" in selection_prompt
+        assert "ТЕКУЩАЯ СТАДИЯ: discovery" in discovery_prompt
+        assert "ТЕКУЩАЯ СТАДИЯ: selection" in selection_prompt

@@ -10,6 +10,7 @@ DEFAULT_STATE: dict = {
     "type": None,
     "color": None,
     "brand": None,
+    "budget": None,
     "selected_product": None,
     "stage": "discovery",
 }

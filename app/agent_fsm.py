@@ -6,6 +6,36 @@ from app.fsm import next_stage
 from app.extractor import extract_entities
 from app.prompts import build_system_prompt
 from app.llm import llm_complete
+from app.db import get_products
+
+
+def _format_products(products: list) -> str:
+    if not products:
+        return ""
+
+    lines = ["Доступные товары из базы:"]
+    for i, p in enumerate(products, 1):
+        parts = [f"{i}. {p.get('name', 'N/A')}"]
+        if p.get("price"):
+            parts.append(f"   Цена: {p['price']}")
+        if p.get("product_type"):
+            parts.append(f"   Тип: {p['product_type']}")
+        if p.get("brand"):
+            parts.append(f"   Бренд: {p['brand']}")
+        if p.get("collection"):
+            parts.append(f"   Коллекция: {p['collection']}")
+        if p.get("length_mm") and p.get("width_mm"):
+            parts.append(f"   Размер: {p['length_mm']}x{p['width_mm']}мм")
+        if p.get("thickness_mm"):
+            parts.append(f"   Толщина: {p['thickness_mm']}мм")
+        if p.get("wear_class"):
+            parts.append(f"   Класс: {p['wear_class']}")
+        if p.get("pieces_per_pack"):
+            parts.append(f"   В упаковке: {p['pieces_per_pack']}шт")
+        if p.get("area_per_pack_m2"):
+            parts.append(f"   м²/упак: {p['area_per_pack_m2']}")
+        lines.append("\n".join(parts))
+    return "\n\n".join(lines)
 
 
 async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
@@ -20,14 +50,30 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
     new_stage = next_stage(state)
     state = update_state(user_id, {}, stage=new_stage)
 
+    if state["stage"] == "selection":
+        products = get_products(
+            product_type=state.get("type"),
+            brand=state.get("brand"),
+            color=state.get("color"),
+        )
+        products_block = _format_products(products) if products else "По вашему запросу ничего не найдено в базе."
+        logger.info("agent found {} products for selection", len(products) if products else 0)
+    else:
+        products_block = None
+
     system_prompt = build_system_prompt(state)
     logger.debug("agent system_prompt stage={}", state["stage"])
 
-    full_prompt = f"""{system_prompt}
+    full_prompt = f"{system_prompt}"
 
-Сообщение пользователя: {message}
+    if products_block:
+        full_prompt += f"\n\n{products_block}"
 
-Ответь как консультант по напольным покрытиям."""
+    full_prompt += f"""
+
+--- СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ ---
+{message}
+"""
 
     logger.debug("agent requesting llm prompt_len={}", len(full_prompt))
     response = await llm_complete(full_prompt)
