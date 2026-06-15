@@ -50,6 +50,7 @@ def sample_specs():
         "brand": "EUROHOME",
         "collection": "MAJESTIC",
         "model": "Дуб Викинг Золотой",
+        "color": "золотой",
         "length_mm": 1285,
         "width_mm": 192,
         "thickness_mm": 8,
@@ -99,6 +100,7 @@ class TestCreateFloorCoveringSpecsTable:
             "brand": "TEXT",
             "collection": "TEXT",
             "model": "TEXT",
+            "color": "TEXT",
             "length_mm": "REAL",
             "width_mm": "REAL",
             "thickness_mm": "REAL",
@@ -137,11 +139,12 @@ class TestSaveParsedSpecs:
         result = cursor.fetchone()
         
         assert result is not None
-        assert result[2] == "Ламинат"  # product_type
-        assert result[3] == "EUROHOME"  # brand
-        assert result[4] == "MAJESTIC"  # collection
-        assert result[10] == 9  # pieces_per_pack
-        assert result[11] == 2.22  # area_per_pack_m2
+        assert result[2] == "Ламинат"
+        assert result[3] == "EUROHOME"
+        assert result[4] == "MAJESTIC"
+        assert result[6] == "золотой"
+        assert result[11] == 9
+        assert result[12] == 2.22
 
     def test_update_existing_record(self, db_connection, sample_product, sample_specs):
         """Test updating an existing record."""
@@ -420,6 +423,7 @@ class TestIntegration:
             "brand": "EUROHOME",
             "collection": "MAJESTIC",
             "model": "Дуб Викинг Золотой",
+            "color": "золотой",
             "length_mm": 1285,
             "width_mm": 192,
             "thickness_mm": 8,
@@ -438,7 +442,7 @@ class TestIntegration:
             
             # Verify
             cursor.execute("""
-                SELECT product_type, brand, collection, model, length_mm, width_mm, 
+                SELECT product_type, brand, collection, model, color, length_mm, width_mm, 
                        thickness_mm, pieces_per_pack, area_per_pack_m2, packs_per_pallet, wear_class
                 FROM floor_covering_specs 
                 WHERE product_id = ?
@@ -451,10 +455,11 @@ class TestIntegration:
             assert result[1] == "EUROHOME"
             assert result[2] == "MAJESTIC"
             assert result[3] == "Дуб Викинг Золотой"
-            assert result[4] == 1285
-            assert result[5] == 192
-            assert result[6] == 8
-            assert result[7] == 9
-            assert result[8] == 2.22
-            assert result[9] == 52
-            assert result[10] == "33класс"
+            assert result[4] == "золотой"
+            assert result[5] == 1285
+            assert result[6] == 192
+            assert result[7] == 8
+            assert result[8] == 9
+            assert result[9] == 2.22
+            assert result[10] == 52
+            assert result[11] == "33класс"

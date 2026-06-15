@@ -41,6 +41,7 @@ def create_floor_covering_specs_table(conn):
             brand TEXT,
             collection TEXT,
             model TEXT,
+            color TEXT,
             length_mm REAL,
             width_mm REAL,
             thickness_mm REAL,
@@ -74,6 +75,7 @@ async def get_yandex_gpt_response(text: str) -> str:
 2. brand — бренд/производитель (обычно первое-третье слово, заглавными буквами): EUROHOME, FLOORPAN, KRONOSPAN, KRONOSTAR и т.д.
 3. collection — коллекция (обычно одно-два слова ПОСЛЕ бренда, часто заглавными): MAJESTIC, LOFT, GREY, Atlantic, Дубов и т.д.
 4. model — название модели/дизайна (всё что ПОСЛЕ коллекции и ДО размеров): Дуб Викинг Золотой, Ройбуш, Эрл Грей, Улун и т.д.
+8. color — цвет покрытия (из модели или названия): белый, черный, серый, темный, светлый, золотой, серебристый, коричневый, бежевый, венге, графит и т.д.
 5. Размеры: ищи паттерн ЧИСЛО*ЧИСЛО*ЧИСЛОмм (например: 1285*192*8мм)
    - length_mm — первое число
    - width_mm — второе число  
@@ -95,6 +97,7 @@ async def get_yandex_gpt_response(text: str) -> str:
 - brand: бренд/производитель
 - collection: коллекция
 - model: модель/название дизайна
+- color: цвет покрытия (белый, черный, серый, темный, светлый, золотой, венге, графит и т.д.)
 - length_mm: длина в мм (число)
 - width_mm: ширина в мм (число)
 - thickness_mm: толщина в мм (число)
@@ -108,15 +111,15 @@ async def get_yandex_gpt_response(text: str) -> str:
 
 Пример 1:
 Название: "Ламинат EUROHOME MAJESTIC Дуб Викинг Золотой 1285*192*8мм (9шт/уп,2.22кв.м,52уп/пал) 33класс"
-Результат: {{"product_type": "Ламинат", "brand": "EUROHOME", "collection": "MAJESTIC", "model": "Дуб Викинг Золотой", "length_mm": 1285, "width_mm": 192, "thickness_mm": 8, "length_m": null, "pieces_per_pack": 9, "area_per_pack_m2": 2.22, "packs_per_pallet": 52, "wear_class": "33класс"}}
+Результат: {{"product_type": "Ламинат", "brand": "EUROHOME", "collection": "MAJESTIC", "model": "Дуб Викинг Золотой", "color": "золотой", "length_mm": 1285, "width_mm": 192, "thickness_mm": 8, "length_m": null, "pieces_per_pack": 9, "area_per_pack_m2": 2.22, "packs_per_pallet": 52, "wear_class": "33класс"}}
 
 Пример 2:
 Название: "Ламинат FLOORPAN GREY Ройбуш 1380*193*8мм (8шт/уп,2.131кв.м,60уп/пал) 32класс"
-Результат: {{"product_type": "Ламинат", "brand": "FLOORPAN", "collection": "GREY", "model": "Ройбуш", "length_mm": 1380, "width_mm": 193, "thickness_mm": 8, "length_m": null, "pieces_per_pack": 8, "area_per_pack_m2": 2.131, "packs_per_pallet": 60, "wear_class": "32класс"}}
+Результат: {{"product_type": "Ламинат", "brand": "FLOORPAN", "collection": "GREY", "model": "Ройбуш", "color": null, "length_mm": 1380, "width_mm": 193, "thickness_mm": 8, "length_m": null, "pieces_per_pack": 8, "area_per_pack_m2": 2.131, "packs_per_pallet": 60, "wear_class": "32класс"}}
 
 Пример 3:
 Название: "Ламинат KRONOSPAN Atlantic Дуб Сильвердейл 1285*192*8мм (9шт/уп,2.22кв.м,52уп/пал) 32класс"
-Результат: {{"product_type": "Ламинат", "brand": "KRONOSPAN", "collection": "Atlantic", "model": "Дуб Сильвердейл", "length_mm": 1285, "width_mm": 192, "thickness_mm": 8, "length_m": null, "pieces_per_pack": 9, "area_per_pack_m2": 2.22, "packs_per_pallet": 52, "wear_class": "32класс"}}
+Результат: {{"product_type": "Ламинат", "brand": "KRONOSPAN", "collection": "Atlantic", "model": "Дуб Сильвердейл", "color": null, "length_mm": 1285, "width_mm": 192, "thickness_mm": 8, "length_m": null, "pieces_per_pack": 9, "area_per_pack_m2": 2.22, "packs_per_pallet": 52, "wear_class": "32класс"}}
 
 Верни ТОЛЬКО JSON объект без дополнительного текста."""
 
@@ -213,13 +216,13 @@ def save_parsed_specs(conn, product_id: int, specs: dict):
     existing = cursor.fetchone()
     
     if existing:
-        # Update existing record
         cursor.execute("""
             UPDATE floor_covering_specs SET
                 product_type = ?,
                 brand = ?,
                 collection = ?,
                 model = ?,
+                color = ?,
                 length_mm = ?,
                 width_mm = ?,
                 thickness_mm = ?,
@@ -234,6 +237,7 @@ def save_parsed_specs(conn, product_id: int, specs: dict):
             specs.get('brand'),
             specs.get('collection'),
             specs.get('model'),
+            specs.get('color'),
             specs.get('length_mm'),
             specs.get('width_mm'),
             specs.get('thickness_mm'),
@@ -246,19 +250,19 @@ def save_parsed_specs(conn, product_id: int, specs: dict):
         ))
         logger.debug(f"Updated existing record for product_id={product_id}")
     else:
-        # Insert new record
         cursor.execute("""
             INSERT INTO floor_covering_specs (
-                product_id, product_type, brand, collection, model,
+                product_id, product_type, brand, collection, model, color,
                 length_mm, width_mm, thickness_mm, length_m,
                 pieces_per_pack, area_per_pack_m2, packs_per_pallet, wear_class
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             product_id,
             specs.get('product_type'),
             specs.get('brand'),
             specs.get('collection'),
             specs.get('model'),
+            specs.get('color'),
             specs.get('length_mm'),
             specs.get('width_mm'),
             specs.get('thickness_mm'),

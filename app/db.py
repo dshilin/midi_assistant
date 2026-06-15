@@ -30,7 +30,7 @@ def get_products(
     conn = get_conn()
     cursor = conn.cursor()
     query = """
-        SELECT p.id, p.name, p.price, s.product_type, s.brand, s.collection, s.model,
+        SELECT p.id, p.name, p.price, s.product_type, s.brand, s.collection, s.model, s.color,
                s.length_mm, s.width_mm, s.thickness_mm, s.pieces_per_pack,
                s.area_per_pack_m2, s.packs_per_pallet, s.wear_class
         FROM products p
@@ -46,9 +46,7 @@ def get_products(
         query += " AND s.brand LIKE ?"
         params.append(f"%{brand}%")
     if color:
-        query += " AND (s.collection LIKE ? OR s.model LIKE ? OR p.name LIKE ?)"
-        params.append(f"%{color}%")
-        params.append(f"%{color}%")
+        query += " AND s.color LIKE ?"
         params.append(f"%{color}%")
 
     query += " LIMIT ?"
@@ -67,7 +65,7 @@ def get_product_by_id(product_id: int) -> Optional[Dict]:
     conn = get_conn()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT p.id, p.name, p.price, s.product_type, s.brand, s.collection, s.model,
+        SELECT p.id, p.name, p.price, s.product_type, s.brand, s.collection, s.model, s.color,
                s.length_mm, s.width_mm, s.thickness_mm, s.pieces_per_pack,
                s.area_per_pack_m2, s.packs_per_pallet, s.wear_class
         FROM products p
