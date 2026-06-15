@@ -65,7 +65,7 @@ async def llm_complete(prompt: str) -> Optional[str]:
         LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
         logger.info("llm provider={}", LLM_PROVIDER)
     try:
-        if LLM_PROVIDER == "yandexgpt":
+        if LLM_PROVIDER in ("yandex", "yandexgpt"):
             return await _llm_yandexgpt(prompt)
         return await _llm_openai(prompt)
     except Exception as e:

@@ -14,7 +14,7 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
     state = get_state(user_id)
     logger.debug("agent current_stage={}", state["stage"])
 
-    extracted = await extract_entities(message)
+    extracted = await extract_entities(message, current_state=state)
     state = update_state(user_id, extracted)
 
     new_stage = next_stage(state)

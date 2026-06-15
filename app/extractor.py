@@ -3,7 +3,12 @@ from typing import Dict
 from loguru import logger
 from app.llm import llm_complete
 
-EXTRACT_PROMPT = """Извлеки параметры из сообщения пользователя.
+EXTRACT_PROMPT = """Ты анализируешь сообщение пользователя и извлекаешь параметры напольного покрытия.
+
+Ниже указаны УЖЕ ИЗВЕСТНЫЕ параметры (из предыдущих сообщений). 
+Если пользователь в новом сообщении НЕ меняет и НЕ отменяет их — верни их как есть.
+Если пользователь уточняет или меняет параметр — верни новое значение.
+Если параметр никогда не упоминался — null.
 
 Верни ТОЛЬКО JSON объект:
 {{
@@ -14,13 +19,17 @@ EXTRACT_PROMPT = """Извлеки параметры из сообщения п
   "brand": предпочитаемый бренд или null
 }}
 
-Если данных нет — укажи null для каждого поля.
 Не добавляй лишнего текста."""
 
 
-async def extract_entities(message: str) -> Dict:
+async def extract_entities(message: str, current_state: Dict = None) -> Dict:
     logger.debug("extract msg_len={} msg_preview={}...", len(message), message[:60])
-    response = await llm_complete(f"{EXTRACT_PROMPT}\n\nСообщение пользователя: {message}")
+    context = ""
+    if current_state:
+        known = {k: v for k, v in current_state.items() if v is not None and k != "stage"}
+        if known:
+            context = f"УЖЕ ИЗВЕСТНО: {known}\n\n"
+    response = await llm_complete(f"{context}{EXTRACT_PROMPT}\n\nСообщение пользователя: {message}")
 
     if not response:
         logger.warning("extract no response from llm")
