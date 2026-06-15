@@ -4,7 +4,7 @@ from state import get_state, update_state
 from fsm import next_stage
 from extractor import extract_entities
 from prompts import build_system_prompt
-from parse_products_gpt import get_yandex_gpt_response
+from llm import llm_complete
 
 
 async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
@@ -24,6 +24,6 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
 
 Ответь как консультант по напольным покрытиям."""
 
-    response = await get_yandex_gpt_response(full_prompt)
+    response = await llm_complete(full_prompt)
 
     return response or "Извините, произошла ошибка. Попробуйте ещё раз.", state

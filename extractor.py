@@ -1,6 +1,6 @@
 import json
 from typing import Dict
-from parse_products_gpt import get_yandex_gpt_response
+from llm import llm_complete
 
 EXTRACT_PROMPT = """Извлеки параметры из сообщения пользователя.
 
@@ -18,7 +18,7 @@ EXTRACT_PROMPT = """Извлеки параметры из сообщения п
 
 
 async def extract_entities(message: str) -> Dict:
-    response = await get_yandex_gpt_response(f"{EXTRACT_PROMPT}\n\nСообщение пользователя: {message}")
+    response = await llm_complete(f"{EXTRACT_PROMPT}\n\nСообщение пользователя: {message}")
 
     if not response:
         return {}
