@@ -17,6 +17,17 @@ def _clean(val):
     return val
 
 
+COLOR_GROUPS = {
+    "темный": ["темный", "черный", "коричневый", "венге", "графит", "вишневый", "шоколадный"],
+    "черный": ["черный", "темный", "венге", "графит"],
+    "коричневый": ["коричневый", "венге", "шоколадный", "темный"],
+    "светлый": ["светлый", "белый", "желтый", "золотой", "серебристый"],
+    "белый": ["белый", "светлый", "серебристый"],
+    "серый": ["серый", "графит", "серебристый"],
+    "золотой": ["золотой", "желтый", "светлый"],
+}
+
+
 def get_products(
     product_type: Optional[str] = None,
     brand: Optional[str] = None,
@@ -46,8 +57,11 @@ def get_products(
         query += " AND s.brand LIKE ?"
         params.append(f"%{brand}%")
     if color:
-        query += " AND s.color LIKE ?"
-        params.append(f"%{color}%")
+        colors = set(COLOR_GROUPS.get(color, [color]))
+        colors.add(color)
+        placeholders = " OR ".join(["s.color LIKE ?" for _ in colors])
+        query += f" AND ({placeholders})"
+        params.extend([f"%{c}%" for c in colors])
 
     query += " LIMIT ?"
     params.append(limit)
