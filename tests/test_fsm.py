@@ -1,7 +1,7 @@
 import pytest
-from state import get_state, update_state, reset_state, STATE
-from fsm import next_stage
-from prompts import build_system_prompt
+from app.state import get_state, update_state, reset_state, STATE
+from app.fsm import next_stage
+from app.prompts import build_system_prompt
 
 
 class TestState:

@@ -22,7 +22,7 @@ async def index():
 @app.post("/chat")
 async def chat(req: ChatRequest):
     logger.info("chat request user={} msg_preview={}...", req.user_id, req.message[:60])
-    from agent_fsm import run_fsm_agent
+    from app.agent_fsm import run_fsm_agent
 
     response, state = await run_fsm_agent(req.user_id, req.message)
 

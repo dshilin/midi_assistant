@@ -4,7 +4,7 @@ import json
 import os
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
-from parse_products_gpt import (
+from app.parse_products_gpt import (
     create_floor_covering_specs_table,
     save_parsed_specs,
     parse_product_name_with_gpt,
@@ -228,7 +228,7 @@ class TestParseProductNameWithGPT:
         {"product_type": "Ламинат", "brand": "EUROHOME", "collection": "MAJESTIC", "model": "Дуб Викинг", "length_mm": 1285, "width_mm": 192, "thickness_mm": 8, "length_m": null, "pieces_per_pack": 9, "area_per_pack_m2": 2.22, "packs_per_pallet": 52, "wear_class": "33класс"}
         """
         
-        with patch("parse_products_gpt.get_yandex_gpt_response", new_callable=AsyncMock) as mock_gpt:
+        with patch("app.parse_products_gpt.get_yandex_gpt_response", new_callable=AsyncMock) as mock_gpt:
             mock_gpt.return_value = sample_response
             
             result = await parse_product_name_with_gpt("Test product name")
@@ -242,7 +242,7 @@ class TestParseProductNameWithGPT:
     @pytest.mark.asyncio
     async def test_no_response_from_gpt(self):
         """Test handling of None response from GPT."""
-        with patch("parse_products_gpt.get_yandex_gpt_response", new_callable=AsyncMock) as mock_gpt:
+        with patch("app.parse_products_gpt.get_yandex_gpt_response", new_callable=AsyncMock) as mock_gpt:
             mock_gpt.return_value = None
             
             result = await parse_product_name_with_gpt("Test product")
@@ -252,7 +252,7 @@ class TestParseProductNameWithGPT:
     @pytest.mark.asyncio
     async def test_invalid_json_response(self):
         """Test handling of invalid JSON."""
-        with patch("parse_products_gpt.get_yandex_gpt_response", new_callable=AsyncMock) as mock_gpt:
+        with patch("app.parse_products_gpt.get_yandex_gpt_response", new_callable=AsyncMock) as mock_gpt:
             mock_gpt.return_value = "This is not valid JSON at all"
             
             result = await parse_product_name_with_gpt("Test product")
@@ -270,7 +270,7 @@ class TestParseProductNameWithGPT:
         Надеюсь, это поможет!
         """
         
-        with patch("parse_products_gpt.get_yandex_gpt_response", new_callable=AsyncMock) as mock_gpt:
+        with patch("app.parse_products_gpt.get_yandex_gpt_response", new_callable=AsyncMock) as mock_gpt:
             mock_gpt.return_value = sample_response
             
             result = await parse_product_name_with_gpt("Test product")
@@ -286,8 +286,8 @@ class TestGetYandexGPTResponse:
     @pytest.mark.asyncio
     async def test_missing_credentials(self):
         """Test handling of missing API credentials."""
-        with patch("parse_products_gpt.API_KEY", ""), \
-             patch("parse_products_gpt.FOLDER_ID", ""):
+        with patch("app.parse_products_gpt.API_KEY", ""), \
+             patch("app.parse_products_gpt.FOLDER_ID", ""):
             
             result = await get_yandex_gpt_response("Test")
             
@@ -296,9 +296,9 @@ class TestGetYandexGPTResponse:
     @pytest.mark.asyncio
     async def test_successful_api_response(self):
         """Test successful API response."""
-        with patch("parse_products_gpt.API_KEY", "test_key"), \
-             patch("parse_products_gpt.FOLDER_ID", "test_folder"), \
-             patch("parse_products_gpt.requests.post") as mock_post:
+        with patch("app.parse_products_gpt.API_KEY", "test_key"), \
+             patch("app.parse_products_gpt.FOLDER_ID", "test_folder"), \
+             patch("app.parse_products_gpt.requests.post") as mock_post:
             
             mock_response = MagicMock()
             mock_response.ok = True
@@ -323,9 +323,9 @@ class TestGetYandexGPTResponse:
     @pytest.mark.asyncio
     async def test_api_error_handling(self):
         """Test handling of API errors."""
-        with patch("parse_products_gpt.API_KEY", "test_key"), \
-             patch("parse_products_gpt.FOLDER_ID", "test_folder"), \
-             patch("parse_products_gpt.requests.post") as mock_post:
+        with patch("app.parse_products_gpt.API_KEY", "test_key"), \
+             patch("app.parse_products_gpt.FOLDER_ID", "test_folder"), \
+             patch("app.parse_products_gpt.requests.post") as mock_post:
             
             mock_response = MagicMock()
             mock_response.ok = False
@@ -354,7 +354,7 @@ class TestParseAllProducts:
         )
         db_connection.commit()
         
-        with patch("parse_products_gpt.parse_product_name_with_gpt", new_callable=AsyncMock) as mock_parse:
+        with patch("app.parse_products_gpt.parse_product_name_with_gpt", new_callable=AsyncMock) as mock_parse:
             mock_parse.return_value = sample_specs
             
             await parse_all_products(db_connection)
@@ -377,7 +377,7 @@ class TestParseAllProducts:
         )
         db_connection.commit()
         
-        with patch("parse_products_gpt.parse_product_name_with_gpt", new_callable=AsyncMock) as mock_parse:
+        with patch("app.parse_products_gpt.parse_product_name_with_gpt", new_callable=AsyncMock) as mock_parse:
             mock_parse.return_value = None  # Simulate failure
             
             await parse_all_products(db_connection)
@@ -392,7 +392,7 @@ class TestParseAllProducts:
         """Test parsing with empty database."""
         create_floor_covering_specs_table(db_connection)
         
-        with patch("parse_products_gpt.parse_product_name_with_gpt", new_callable=AsyncMock) as mock_parse:
+        with patch("app.parse_products_gpt.parse_product_name_with_gpt", new_callable=AsyncMock) as mock_parse:
             await parse_all_products(db_connection)
             
             mock_parse.assert_not_called()
@@ -430,7 +430,7 @@ class TestIntegration:
             "wear_class": "33класс"
         })
         
-        with patch("parse_products_gpt.get_yandex_gpt_response", new_callable=AsyncMock) as mock_gpt:
+        with patch("app.parse_products_gpt.get_yandex_gpt_response", new_callable=AsyncMock) as mock_gpt:
             mock_gpt.return_value = sample_response
             
             # Execute

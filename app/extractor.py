@@ -1,7 +1,7 @@
 import json
 from typing import Dict
 from loguru import logger
-from llm import llm_complete
+from app.llm import llm_complete
 
 EXTRACT_PROMPT = """Извлеки параметры из сообщения пользователя.
 

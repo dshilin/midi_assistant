@@ -1,11 +1,11 @@
 from typing import Dict, Tuple
 from loguru import logger
 
-from state import get_state, update_state
-from fsm import next_stage
-from extractor import extract_entities
-from prompts import build_system_prompt
-from llm import llm_complete
+from app.state import get_state, update_state
+from app.fsm import next_stage
+from app.extractor import extract_entities
+from app.prompts import build_system_prompt
+from app.llm import llm_complete
 
 
 async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
