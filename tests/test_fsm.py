@@ -63,9 +63,9 @@ class TestFSM:
         state = {"stage": "selection", "selected_product": None}
         assert next_stage(state) == "selection"
 
-    def test_calculation_to_closing(self):
+    def test_calculation_stays(self):
         state = {"stage": "calculation"}
-        assert next_stage(state) == "closing"
+        assert next_stage(state) == "calculation"
 
     def test_closing_stays_closing(self):
         state = {"stage": "closing"}
@@ -74,13 +74,13 @@ class TestFSM:
 
 class TestPrompts:
     def test_build_system_prompt(self):
-        state = {"stage": "discovery", "type": None, "color": None, "area": None, "brand": None, "budget": None, "room_type": None}
+        state = {"stage": "discovery", "type": None, "color": None, "area": None, "brand": None, "budget": None, "room_type": None, "selected_product": None}
         prompt = build_system_prompt(state)
         assert "discovery" in prompt
         assert "AI-консультант" in prompt
 
     def test_prompt_changes_by_stage(self):
-        base = {"type": None, "color": None, "area": None, "brand": None, "budget": None, "room_type": None}
+        base = {"type": None, "color": None, "area": None, "brand": None, "budget": None, "room_type": None, "selected_product": None}
         discovery_state = {"stage": "discovery", **base}
         selection_state = {"stage": "selection", "type": "ламинат", "color": "дуб", "area": 20, **base}
 

@@ -32,7 +32,13 @@ def update_state(user_id: str, updates: Dict, stage: Optional[str] = None) -> Di
 
     for k, v in updates.items():
         if v is not None and str(v).lower() != "null":
-            STATE[user_id][k] = v
+            if k in ("area", "budget"):
+                try:
+                    STATE[user_id][k] = float(v)
+                except (ValueError, TypeError):
+                    STATE[user_id][k] = v
+            else:
+                STATE[user_id][k] = v
 
     if stage:
         old_stage = STATE[user_id]["stage"]

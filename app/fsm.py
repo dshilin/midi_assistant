@@ -11,21 +11,18 @@ STATES = [
 
 def next_stage(state: dict) -> str:
     current = state.get("stage", "discovery")
-    next_s = current
 
     if current == "discovery":
         if state.get("type") or state.get("color"):
-            next_s = "selection"
+            logger.debug("fsm discovery → selection (type={}, color={})",
+                         state.get("type"), state.get("color"))
+            return "selection"
 
     elif current == "selection":
         if state.get("selected_product"):
-            next_s = "calculation"
+            logger.debug("fsm selection → calculation (product={})",
+                         state.get("selected_product"))
+            return "calculation"
 
-    elif current == "calculation":
-        next_s = "closing"
-
-    if next_s != current:
-        logger.debug("fsm {} → {} (type={}, color={}, product={})",
-                     current, next_s, state.get("type"), state.get("color"), state.get("selected_product"))
-
-    return next_s
+    # calculation and closing stay as-is until explicit change
+    return current

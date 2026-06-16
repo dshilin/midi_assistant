@@ -14,7 +14,7 @@ def get_conn() -> sqlite3.Connection:
 def _clean(val):
     if val is None or str(val).lower() == "null":
         return None
-    return val
+    return str(val).replace("ё", "е").replace("Ё", "Е")
 
 
 COLOR_GROUPS = {
@@ -80,6 +80,20 @@ def get_products(
     return result
 
 
+def get_distinct_product_types() -> List[str]:
+    try:
+        conn = get_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT product_type FROM floor_covering_specs WHERE product_type IS NOT NULL ORDER BY product_type")
+        types = [r[0] for r in cursor.fetchall()]
+        conn.close()
+        logger.debug("db.get_distinct_product_types found={}", len(types))
+        return types
+    except Exception as e:
+        logger.warning("db.get_distinct_product_types error: {}", e)
+        return []
+
+
 def get_product_by_id(product_id: int) -> Optional[Dict]:
     logger.debug("db.get_product_by_id id={}", product_id)
     conn = get_conn()
@@ -101,6 +115,12 @@ def get_product_by_id(product_id: int) -> Optional[Dict]:
 
 def calculate_material(area: float, product_id: int) -> Optional[Dict]:
     area = _clean(area)
+    if area is not None:
+        try:
+            area = float(area)
+        except (ValueError, TypeError):
+            logger.warning("db.calculate_material invalid area={}", area)
+            return None
     product_id = _clean(product_id)
     logger.debug("db.calculate_material area={} product_id={}", area, product_id)
     product = get_product_by_id(product_id)
