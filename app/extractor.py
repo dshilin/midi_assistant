@@ -65,11 +65,11 @@ async def extract_entities(
     products: Optional[List[Dict]] = None,
 ) -> Dict:
     logger.debug("extract msg_len={} msg_preview={}...", len(message), message[:60])
-    context = ""
+    internal_keys = ("stage", "selected_product", "last_shown_products")
+    known = {}
     if current_state:
-        known = {k: v for k, v in current_state.items() if v is not None and k != "stage"}
-        if known:
-            context = f"УЖЕ ИЗВЕСТНО: {known}\n\n"
+        known = {k: v for k, v in current_state.items() if v is not None and k not in internal_keys}
+    context = f"УЖЕ ИЗВЕСТНО: {known}\n\n" if known else "УЖЕ ИЗВЕСТНО: пока ничего.\n\n"
 
     if products:
         block = _format_products_short(products)
@@ -78,7 +78,7 @@ async def extract_entities(
     else:
         prompt = EXTRACT_PROMPT
 
-    response = await llm_complete(f"{context}{prompt}\n\nСообщение пользователя: {message}")
+    response = await llm_complete(f"{prompt}\n\n{context}Сообщение пользователя: {message}")
 
     if not response:
         logger.warning("extract no response from llm")

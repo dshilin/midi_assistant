@@ -1,23 +1,32 @@
 from typing import Dict, List, Optional, Tuple
 from loguru import logger
 
-from app.state import get_state, update_state
+from app.state import get_state, update_state, get_history, append_history
 from app.fsm import next_stage
 from app.extractor import extract_entities
 from app.prompts import build_system_prompt
-from app.llm import llm_complete
+from app.llm import llm_chat
 from app.db import get_products, calculate_material, get_product_by_id, get_distinct_product_types
+
+CRITERIA_LABELS = {
+    "type": "тип",
+    "color": "цвет",
+    "brand": "бренд",
+    "area": "площадь",
+    "budget": "бюджет",
+    "room_type": "помещение",
+}
 
 
 def _format_products(products: list) -> str:
     if not products:
         return ""
 
-    lines = ["Доступные товары из базы:"]
+    lines = ["Доступные товары из базы (цены указаны за 1 штуку — планку/плитку):"]
     for i, p in enumerate(products, 1):
         parts = [f"{i}. {p.get('name', 'N/A')}"]
         if p.get("price"):
-            parts.append(f"   Цена: {p['price']} ₽")
+            parts.append(f"   Цена: {p['price']} ₽/шт")
         if p.get("product_type"):
             parts.append(f"   Тип: {p['product_type']}")
         if p.get("brand"):
@@ -43,7 +52,7 @@ def _format_product_full(product: Dict) -> str:
     price = product.get("price", "N/A")
     parts = [
         f"Выбранный товар: {name}",
-        f"Цена: {price} ₽",
+        f"Цена: {price} ₽/шт",
     ]
     for field, label in [
         ("product_type", "Тип"),
@@ -62,30 +71,39 @@ def _format_product_full(product: Dict) -> str:
     return "\n".join(parts)
 
 
+def _fetch_products_by_criteria(state: Dict) -> List[Dict]:
+    return get_products(
+        product_type=state.get("type"),
+        brand=state.get("brand"),
+        color=state.get("color"),
+    )
+
+
 async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
     logger.info("agent user={} msg_preview={}...", user_id, message[:60])
 
     state = get_state(user_id)
     logger.debug("agent current_stage={}", state["stage"])
 
-    # 1. Fetch current products if already in selection (for extractor context)
-    products: Optional[List[Dict]] = None
+    # 1. Restore the product list shown on the previous turn, so the extractor
+    # maps "первый/второй" onto exactly what the user saw
+    shown_products: Optional[List[Dict]] = None
     if state["stage"] == "selection":
-        products = get_products(
-            product_type=state.get("type"),
-            brand=state.get("brand"),
-            color=state.get("color"),
-        )
+        shown_ids = state.get("last_shown_products") or []
+        if shown_ids:
+            shown_products = [p for p in (get_product_by_id(pid) for pid in shown_ids) if p]
+        if not shown_products:
+            shown_products = _fetch_products_by_criteria(state)
 
     # 2. Extract entities (with product context when available)
-    extracted = await extract_entities(message, current_state=state, products=products)
+    extracted = await extract_entities(message, current_state=state, products=shown_products)
 
     # 3. Map selected_product_index → actual product ID
     selected_idx = extracted.pop("selected_product_index", None)
-    if selected_idx is not None and products:
+    if selected_idx is not None and shown_products:
         idx = int(selected_idx) - 1
-        if 0 <= idx < len(products):
-            pid = products[idx].get("id")
+        if 0 <= idx < len(shown_products):
+            pid = shown_products[idx].get("id")
             if pid:
                 extracted["selected_product"] = pid
                 logger.info("agent user selected product id={}", pid)
@@ -94,27 +112,27 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
     new_stage = next_stage(state)
     state = update_state(user_id, {}, stage=new_stage)
 
-    # 4. If just entered selection, fetch products now
-    if state["stage"] == "selection" and not products:
-        products = get_products(
-            product_type=state.get("type"),
-            brand=state.get("brand"),
-            color=state.get("color"),
-        )
-
-    # 5. Build context blocks for the LLM prompt
+    # 4. Build context blocks for the LLM prompt
     products_block = None
     calculation_block = None
 
     if state["stage"] == "selection":
+        # always refetch with the current criteria: the user may have just changed them
+        products = _fetch_products_by_criteria(state)
         if products:
             products_block = _format_products(products)
+            state = update_state(user_id, {"last_shown_products": [p["id"] for p in products if p.get("id")]})
             logger.info("agent found {} products for selection", len(products))
         else:
-            known = {k: v for k, v in state.items() if v not in (None, "null", "selection", "objection", "calculation", "closing", "discovery") and k != "stage"}
+            state = update_state(user_id, {"last_shown_products": []})
+            known = ", ".join(
+                f"{label} — {state[key]}"
+                for key, label in CRITERIA_LABELS.items()
+                if state.get(key) not in (None, "null")
+            )
             available = get_distinct_product_types()
             types_hint = f"В базе есть: {', '.join(available)}." if available else ""
-            products_block = f"В базе нет товаров по критериям: {known}. {types_hint} Предложи клиенту расширить или изменить критерии поиска."
+            products_block = f"В базе нет товаров по критериям ({known}). {types_hint} Предложи клиенту расширить или изменить критерии поиска."
             logger.info("agent no products for selection criteria={} available={}", known, available)
 
     elif state["stage"] == "calculation":
@@ -127,7 +145,6 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
                 if area:
                     calc = calculate_material(area, pid)
                     if calc:
-                        packs = calc['packs_needed']
                         packs = calc['packs_needed']
                         raw_price = product.get("price")
                         price = float(raw_price) if raw_price and str(raw_price).lower() != "null" else None
@@ -146,25 +163,23 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
                             calc_lines.append(f"Общая стоимость: {total:.0f} ₽")
                         calculation_block += "\n".join(calc_lines)
 
-    # 6. Build full prompt
+    # 5. Build the system prompt and dialog messages
     system_prompt = build_system_prompt(state)
-    logger.debug("agent system_prompt stage={}", state["stage"])
-
-    full_prompt = system_prompt
-
     if products_block:
-        full_prompt += f"\n\n{products_block}"
+        system_prompt += f"\n\n{products_block}"
     if calculation_block:
-        full_prompt += f"\n\n{calculation_block}"
+        system_prompt += f"\n\n{calculation_block}"
 
-    full_prompt += f"\n\n--- СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ ---\n{message}"
-
-    logger.debug("agent requesting llm prompt_len={}", len(full_prompt))
-    response = await llm_complete(full_prompt)
+    messages = get_history(user_id) + [{"role": "user", "content": message}]
+    logger.debug("agent requesting llm stage={} history_len={}", state["stage"], len(messages) - 1)
+    response = await llm_chat(messages, system=system_prompt)
 
     if not response:
         logger.error("agent no response from llm user={}", user_id)
         return "Извините, произошла ошибка. Попробуйте ещё раз.", state
+
+    append_history(user_id, "user", message)
+    append_history(user_id, "assistant", response)
 
     logger.info("agent response user={} stage={} resp_len={}", user_id, state["stage"], len(response))
     return response, state
