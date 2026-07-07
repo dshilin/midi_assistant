@@ -1,8 +1,10 @@
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from copy import deepcopy
 from loguru import logger
 
 STATE: Dict[str, dict] = {}
+HISTORY: Dict[str, List[dict]] = {}
+HISTORY_LIMIT = 10  # messages (user + assistant), i.e. last 5 exchanges
 
 DEFAULT_STATE: dict = {
     "room_type": None,
@@ -12,6 +14,7 @@ DEFAULT_STATE: dict = {
     "brand": None,
     "budget": None,
     "selected_product": None,
+    "last_shown_products": None,
     "stage": "discovery",
 }
 
@@ -51,7 +54,18 @@ def update_state(user_id: str, updates: Dict, stage: Optional[str] = None) -> Di
     return deepcopy(STATE[user_id])
 
 
+def get_history(user_id: str) -> List[dict]:
+    return deepcopy(HISTORY.get(user_id, []))
+
+
+def append_history(user_id: str, role: str, content: str) -> None:
+    HISTORY.setdefault(user_id, []).append({"role": role, "content": content})
+    if len(HISTORY[user_id]) > HISTORY_LIMIT:
+        HISTORY[user_id] = HISTORY[user_id][-HISTORY_LIMIT:]
+
+
 def reset_state(user_id: str) -> Dict:
     logger.info("user={} resetting state", user_id)
     STATE[user_id] = deepcopy(DEFAULT_STATE)
+    HISTORY.pop(user_id, None)
     return deepcopy(STATE[user_id])
