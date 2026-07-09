@@ -3,7 +3,8 @@ from bs4 import BeautifulSoup
 import sqlite3
 from urllib.parse import urljoin
 
-URL =  "https://midiltd.ru/catalog/napolnye_pokrytiya/filter/in_stock-is-y/apply/?SHOWALL_1=1"
+# Фильтр in_stock-is-y — только в наличии; SHOWALL_1=1 — все товары одной страницей (без пагинации).
+URL = "https://midiltd.ru/catalog/napolnye_pokrytiya/filter/in_stock-is-y/apply/?SHOWALL_1=1"
 DB_PATH = "products.db"
 
 
@@ -20,6 +21,10 @@ def create_database():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Add article column if not exists (migration)
+    existing_cols = {row[1] for row in cursor.execute("PRAGMA table_info(products)")}
+    if "article" not in existing_cols:
+        cursor.execute("ALTER TABLE products ADD COLUMN article TEXT")
     # Clear existing data to avoid duplicates
     cursor.execute("DELETE FROM products")
     conn.commit()
@@ -38,45 +43,23 @@ def scrape_products(url):
     soup = BeautifulSoup(response.text, "html.parser")
     products = []
 
-    # Navigation items to filter out
-    skip_names = {"главная", "каталог", "напольные покрытия", "корзина", "контакты"}
-
-    # Try common e-commerce patterns for product titles
-    selectors = [
-        ".catalog-table__info-title",
-        ".product-item .name",
-        ".product-item .title",
-        ".product-title",
-        ".product-name",
-        ".catalog-item .name",
-        ".catalog-item .title",
-        "[itemprop='name']",
-        ".item-title",
-        ".product-card .name"
-    ]
-
-    for selector in selectors:
-        elements = soup.select(selector)
-        if elements:
-            for elem in elements:
-                name = elem.get_text(strip=True)
-                if name and name.lower() not in skip_names:
-                    # Try to find product link
-                    link_elem = elem.find("a")
-                    product_url = None
-                    if link_elem:
-                        product_url = urljoin(url, link_elem.get("href", ""))
-                    
-                    # Find price: go up to .catalog-item and find .price__new-val
-                    price = None
-                    catalog_item = elem.find_parent(class_="catalog-item")
-                    if catalog_item:
-                        price_elem = catalog_item.select_one(".price__new-val")
-                        if price_elem:
-                            price = price_elem.get_text(strip=True)
-                    
-                    products.append((name, product_url, price))
-            break  # Found products with this selector, stop trying others
+    # Current site (Bitrix) uses these selectors
+    for name_elem, price_elem, link_elem, article_elem in zip(
+        soup.select(".catalog-block__info-title"),
+        soup.select(".price__new-val"),
+        soup.select(".dark_link.switcher-title"),
+        soup.select(".js-replace-article"),
+    ):
+        name = name_elem.get_text(strip=True)
+        if not name:
+            continue
+        price = price_elem.get_text(strip=True) if price_elem else None
+        href = link_elem.get("href", "") if link_elem else None
+        product_url = urljoin(url, href) if href else None
+        article = None
+        if article_elem:
+            article = article_elem.get("data-value") or article_elem.get_text(strip=True) or None
+        products.append((name, product_url, price, article))
 
     return products
 
@@ -85,7 +68,7 @@ def save_products(conn, products):
     """Save products to the database."""
     cursor = conn.cursor()
     cursor.executemany(
-        "INSERT INTO products (name, url, price) VALUES (?, ?, ?)",
+        "INSERT INTO products (name, url, price, article) VALUES (?, ?, ?, ?)",
         products
     )
     conn.commit()
