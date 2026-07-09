@@ -6,6 +6,8 @@
    midiltd.ru в таблицу `products` (название, url, цена, **артикул**).
 2. **`app/parse_products_gpt.py`** — прогоняет названия из `products` через
    YandexGPT и раскладывает их в структурированную таблицу `floor_covering_specs`.
+3. **`app/load_stock.py`** — загружает остатки со склада (выгрузка 1С в `.xlsx`)
+   в таблицу `stock`; связывается с товарами по артикулу.
 
 ## Источник данных (in-stock)
 
@@ -88,7 +90,35 @@ The parser extracts the following fields from product names:
 > строго значением, собранным скрейпером со страницы (`products.article`).
 > Парсер лишь переносит его в таблицу спецификаций.
 
+## Остатки со склада (app.load_stock)
+
+Остатки приходят отдельной выгрузкой из 1С («Ведомость по товарам на складах»,
+`.xlsx`) и загружаются в таблицу `stock`:
+
+```bash
+python -m app.load_stock "Остатки на 09.08.26.xlsx"
+```
+
+- Значимые колонки листа: **A — Артикул**, C — Номенклатура, G — Ед. изм.,
+  **K — Конечный остаток**.
+- Каждый запуск полностью пересобирает таблицу `stock` (`DELETE FROM stock`).
+- Читается стандартной библиотекой (zip+xml), без openpyxl/pandas.
+- Связь с каталогом — по артикулу: `stock.article` ↔ `products.article`. Поэтому
+  остатки стыкуются только после того, как скрейпер собрал артикулы товаров.
+
 ## Database Schema
+
+### stock Table (заполняет app.load_stock)
+
+```sql
+CREATE TABLE stock (
+    article TEXT PRIMARY KEY,
+    name TEXT,
+    unit TEXT,
+    quantity REAL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
 
 ### products Table (заполняет скрейпер)
 
