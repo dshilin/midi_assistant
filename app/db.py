@@ -52,22 +52,26 @@ def get_products(
 
     if product_type:
         raw = product_type.strip()
-        # full query as-is (for "кварцвинил" → matches "Кварц-виниловое")
-        cap_raw = raw[0].upper() + raw[1:] if raw else raw
-        conds = [f"s.product_type LIKE ?", f"s.product_type LIKE ?",
-                 f"p.name LIKE ?", f"p.name LIKE ?"]
-        for val in (f"%{raw}%", f"%{cap_raw}%"):
-            params.extend([val, val])
-        # individual words (for "кварц винил")
-        for w in raw.replace('-', ' ').replace(',', ' ').split():
-            if len(w) < 2:
-                continue
-            cap = w[0].upper() + w[1:]
-            conds.extend([f"s.product_type LIKE ?", f"s.product_type LIKE ?",
-                          f"p.name LIKE ?", f"p.name LIKE ?"])
-            for val in (f"%{w}%", f"%{cap}%"):
-                params.extend([val, val])
-        query += " AND (" + " OR ".join(conds) + ")"
+        # Каждый термин ищем и в product_type, и в названии, в двух регистрах:
+        # LIKE в SQLite для кириллицы регистрозависим, поэтому нужен и капитализированный
+        # вариант. Помимо полной строки берём отдельные слова ("кварц винил" → "кварц", "винил";
+        # "кварцвинил" целиком найдёт "Кварц-виниловое").
+        seen = set()
+        terms = []
+        for t in [raw] + raw.replace('-', ' ').replace(',', ' ').split():
+            t = t.strip()
+            if len(t) >= 2 and t.lower() not in seen:
+                seen.add(t.lower())
+                terms.append(t)
+        conds = []
+        for term in terms:
+            cap = term[0].upper() + term[1:]
+            for field in ("s.product_type", "p.name"):
+                for value in (f"%{term}%", f"%{cap}%"):
+                    conds.append(f"{field} LIKE ?")
+                    params.append(value)
+        if conds:
+            query += " AND (" + " OR ".join(conds) + ")"
     if brand:
         query += " AND (s.brand LIKE ? OR s.brand LIKE ?)"
         b = brand.strip()
