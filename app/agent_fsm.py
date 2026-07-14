@@ -85,6 +85,11 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
     state = get_state(user_id)
     logger.debug("agent current_stage={}", state["stage"])
 
+    history = get_history(user_id)
+    last_assistant = next(
+        (m["content"] for m in reversed(history) if m.get("role") == "assistant"), None
+    )
+
     # 1. Restore the product list shown on the previous turn, so the extractor
     # maps "первый/второй" onto exactly what the user saw
     shown_products: Optional[List[Dict]] = None
@@ -95,8 +100,11 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
         if not shown_products:
             shown_products = _fetch_products_by_criteria(state)
 
-    # 2. Extract entities (with product context when available)
-    extracted = await extract_entities(message, current_state=state, products=shown_products)
+    # 2. Extract entities (with product context and the assistant's last reply, so a
+    # short "давай" after "хотите ламинат?" is resolved into type=ламинат)
+    extracted = await extract_entities(
+        message, current_state=state, products=shown_products, last_assistant=last_assistant
+    )
 
     # 3. Map selected_product_index → actual product ID
     selected_idx = extracted.pop("selected_product_index", None)
@@ -131,8 +139,16 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
                 if state.get(key) not in (None, "null")
             )
             available = get_distinct_product_types()
-            types_hint = f"В базе есть: {', '.join(available)}." if available else ""
-            products_block = f"В базе нет товаров по критериям ({known}). {types_hint} Предложи клиенту расширить или изменить критерии поиска."
+            types_hint = f"В базе реально есть только эти типы: {', '.join(available)}." if available else ""
+            products_block = (
+                f"⛔ ТОВАРОВ В БАЗЕ ПО ТЕКУЩИМ КРИТЕРИЯМ НЕТ ({known}).\n"
+                f"{types_hint}\n"
+                "СТРОГО ЗАПРЕЩЕНО в ответе: перечислять, показывать или придумывать какие-либо товары, "
+                "их цены, бренды и характеристики. Запрещены любые шаблоны и заглушки вида «[указать ...]», "
+                "«бренд ...», «цена ...». Нельзя обещать список товаров, которых нет.\n"
+                "Твой ответ должен: сообщить, что по этим критериям товаров нет, и предложить изменить "
+                "критерии — например, выбрать один из реально доступных типов, перечисленных выше."
+            )
             logger.info("agent no products for selection criteria={} available={}", known, available)
 
     elif state["stage"] == "calculation":
@@ -170,7 +186,7 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
     if calculation_block:
         system_prompt += f"\n\n{calculation_block}"
 
-    messages = get_history(user_id) + [{"role": "user", "content": message}]
+    messages = history + [{"role": "user", "content": message}]
     logger.debug("agent requesting llm stage={} history_len={}", state["stage"], len(messages) - 1)
     response = await llm_chat(messages, system=system_prompt)
 

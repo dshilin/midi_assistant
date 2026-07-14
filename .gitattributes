@@ -1,0 +1,9 @@
+# Нормализуем переносы строк: в репозитории LF, чтобы Windows-редактирование
+# не плодило CRLF-шум в дифах.
+* text=auto eol=lf
+
+# Бинарные форматы не трогаем.
+*.xlsx binary
+*.db binary
+*.png binary
+*.jpg binary

@@ -1,6 +1,40 @@
-# YandexGPT Product Parser
+# Data Pipeline: Scraper + YandexGPT Parser
 
-This module parses product names from the `products.db` database using YandexGPT and extracts structured specifications into the `floor_covering_specs` table.
+Наполнение `products.db` состоит из двух шагов, которые запускаются по порядку:
+
+1. **`app/scrape_products.py`** — скрейпит каталог напольных покрытий с сайта
+   midiltd.ru в таблицу `products` (название, url, цена, **артикул**).
+2. **`app/parse_products_gpt.py`** — прогоняет названия из `products` через
+   YandexGPT и раскладывает их в структурированную таблицу `floor_covering_specs`.
+3. **`app/load_stock.py`** — загружает остатки со склада (выгрузка 1С в `.xlsx`)
+   в таблицу `stock`; связывается с товарами по артикулу.
+
+## Источник данных (in-stock)
+
+Скрейпер берёт **только товары в наличии** одной страницей — используется
+отфильтрованный URL с `SHOWALL_1=1` (вывод всех позиций без пагинации):
+
+```
+https://midiltd.ru/catalog/napolnye_pokrytiya/filter/in_stock-is-y/apply/?SHOWALL_1=1
+```
+
+## Шаг 1. Скрейпинг
+
+```bash
+python -m app.scrape_products
+```
+
+- Каждый запуск **полностью пересобирает** таблицу `products` (`DELETE FROM products`).
+- Артикул берётся из элемента карточки
+  `<span class="js-replace-article" data-value="01-38802">` (значение `data-value`).
+- Все товары грузятся одной страницей за счёт `SHOWALL_1=1` — пагинация не нужна.
+
+> ⚠️ Скрейпер сопоставляет поля карточек параллельно по индексу
+> (`zip` по спискам title/price/link/article). Это подразумевает, что у каждой
+> карточки эти элементы присутствуют. Если сайт сменит вёрстку — проверить
+> соответствие селекторов.
+
+## Шаг 2. Парсинг названий (YandexGPT)
 
 ## Setup
 
@@ -42,6 +76,7 @@ The parser extracts the following fields from product names:
 - `brand`: Brand/manufacturer
 - `collection`: Collection name
 - `model`: Model/design name
+- `color`: Colour of the covering (белый, серый, венге, графит, …)
 - `length_mm`: Length in millimeters
 - `width_mm`: Width in millimeters
 - `thickness_mm`: Thickness in millimeters
@@ -51,9 +86,54 @@ The parser extracts the following fields from product names:
 - `packs_per_pallet`: Number of packs per pallet
 - `wear_class`: Wear resistance class (e.g., 32класс, 33класс)
 
+> **Артикул GPT не извлекает.** Поле `floor_covering_specs.article` заполняется
+> строго значением, собранным скрейпером со страницы (`products.article`).
+> Парсер лишь переносит его в таблицу спецификаций.
+
+## Остатки со склада (app.load_stock)
+
+Остатки приходят отдельной выгрузкой из 1С («Ведомость по товарам на складах»,
+`.xlsx`) и загружаются в таблицу `stock`:
+
+```bash
+python -m app.load_stock "Остатки на 09.08.26.xlsx"
+```
+
+- Значимые колонки листа: **A — Артикул**, C — Номенклатура, G — Ед. изм.,
+  **K — Конечный остаток**.
+- Каждый запуск полностью пересобирает таблицу `stock` (`DELETE FROM stock`).
+- Читается стандартной библиотекой (zip+xml), без openpyxl/pandas.
+- Связь с каталогом — по артикулу: `stock.article` ↔ `products.article`. Поэтому
+  остатки стыкуются только после того, как скрейпер собрал артикулы товаров.
+
 ## Database Schema
 
-### floor_covering_specs Table
+### stock Table (заполняет app.load_stock)
+
+```sql
+CREATE TABLE stock (
+    article TEXT PRIMARY KEY,
+    name TEXT,
+    unit TEXT,
+    quantity REAL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### products Table (заполняет скрейпер)
+
+```sql
+CREATE TABLE products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    url TEXT,
+    price TEXT,
+    article TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### floor_covering_specs Table (заполняет GPT-парсер)
 
 ```sql
 CREATE TABLE floor_covering_specs (
@@ -63,6 +143,7 @@ CREATE TABLE floor_covering_specs (
     brand TEXT,
     collection TEXT,
     model TEXT,
+    color TEXT,
     length_mm REAL,
     width_mm REAL,
     thickness_mm REAL,
@@ -71,6 +152,7 @@ CREATE TABLE floor_covering_specs (
     area_per_pack_m2 REAL,
     packs_per_pallet INTEGER,
     wear_class TEXT,
+    article TEXT,
     FOREIGN KEY (product_id) REFERENCES products(id)
 );
 ```

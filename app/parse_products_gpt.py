@@ -50,6 +50,7 @@ def create_floor_covering_specs_table(conn):
             area_per_pack_m2 REAL,
             packs_per_pallet INTEGER,
             wear_class TEXT,
+            article TEXT,
             FOREIGN KEY (product_id) REFERENCES products(id)
         )
     """)
@@ -118,8 +119,8 @@ async def get_yandex_gpt_response(text: str) -> str:
 Результат: {{"product_type": "Ламинат", "brand": "FLOORPAN", "collection": "GREY", "model": "Ройбуш", "color": null, "length_mm": 1380, "width_mm": 193, "thickness_mm": 8, "length_m": null, "pieces_per_pack": 8, "area_per_pack_m2": 2.131, "packs_per_pallet": 60, "wear_class": "32класс"}}
 
 Пример 3:
-Название: "Ламинат KRONOSPAN Atlantic Дуб Сильвердейл 1285*192*8мм (9шт/уп,2.22кв.м,52уп/пал) 32класс"
-Результат: {{"product_type": "Ламинат", "brand": "KRONOSPAN", "collection": "Atlantic", "model": "Дуб Сильвердейл", "color": null, "length_mm": 1285, "width_mm": 192, "thickness_mm": 8, "length_m": null, "pieces_per_pack": 9, "area_per_pack_m2": 2.22, "packs_per_pallet": 52, "wear_class": "32класс"}}
+Название: "Ламинат Дуб Ахад GH2304 1380*193*8мм (8шт/уп,2,13кв.м) 32класс"
+Результат: {{"product_type": "Ламинат", "brand": null, "collection": null, "model": "Дуб Ахад", "color": null, "length_mm": 1380, "width_mm": 193, "thickness_mm": 8, "length_m": null, "pieces_per_pack": 8, "area_per_pack_m2": 2.13, "packs_per_pallet": null, "wear_class": "32класс"}}
 
 Верни ТОЛЬКО JSON объект без дополнительного текста."""
 
@@ -230,7 +231,8 @@ def save_parsed_specs(conn, product_id: int, specs: dict):
                 pieces_per_pack = ?,
                 area_per_pack_m2 = ?,
                 packs_per_pallet = ?,
-                wear_class = ?
+                wear_class = ?,
+                article = ?
             WHERE product_id = ?
         """, (
             specs.get('product_type'),
@@ -246,6 +248,7 @@ def save_parsed_specs(conn, product_id: int, specs: dict):
             specs.get('area_per_pack_m2'),
             specs.get('packs_per_pallet'),
             specs.get('wear_class'),
+            specs.get('article'),
             product_id
         ))
         logger.debug(f"Updated existing record for product_id={product_id}")
@@ -254,8 +257,9 @@ def save_parsed_specs(conn, product_id: int, specs: dict):
             INSERT INTO floor_covering_specs (
                 product_id, product_type, brand, collection, model, color,
                 length_mm, width_mm, thickness_mm, length_m,
-                pieces_per_pack, area_per_pack_m2, packs_per_pallet, wear_class
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                pieces_per_pack, area_per_pack_m2, packs_per_pallet, wear_class,
+                article
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             product_id,
             specs.get('product_type'),
@@ -270,7 +274,8 @@ def save_parsed_specs(conn, product_id: int, specs: dict):
             specs.get('pieces_per_pack'),
             specs.get('area_per_pack_m2'),
             specs.get('packs_per_pallet'),
-            specs.get('wear_class')
+            specs.get('wear_class'),
+            specs.get('article')
         ))
         logger.debug(f"Inserted new record for product_id={product_id}")
     
@@ -285,27 +290,40 @@ async def parse_all_products(conn, product_ids=None):
         product_ids: Optional list of product IDs to parse. If None, parses all products.
     """
     cursor = conn.cursor()
-    
+
+    # Артикул берётся ТОЛЬКО скрейпером со страницы товара (products.article).
+    # GPT артикул не определяет — см. промпт.
+    has_article = any(row[1] == "article" for row in cursor.execute("PRAGMA table_info(products)"))
+    columns = "id, name, article" if has_article else "id, name"
+
     # Get products - either specific IDs or all
     if product_ids:
         placeholders = ','.join('?' for _ in product_ids)
-        cursor.execute(f"SELECT id, name FROM products WHERE id IN ({placeholders})", product_ids)
-        products = cursor.fetchall()
-        logger.info(f"Found {len(products)} products for IDs: {product_ids}")
+        cursor.execute(f"SELECT {columns} FROM products WHERE id IN ({placeholders})", product_ids)
+        rows = cursor.fetchall()
+        logger.info(f"Found {len(rows)} products for IDs: {product_ids}")
     else:
-        cursor.execute("SELECT id, name FROM products")
-        products = cursor.fetchall()
-        logger.info(f"Found {len(products)} products to parse")
-    
+        cursor.execute(f"SELECT {columns} FROM products")
+        rows = cursor.fetchall()
+        logger.info(f"Found {len(rows)} products to parse")
+
+    # Нормализуем к (id, name, article) независимо от наличия колонки.
+    products = [(r[0], r[1], (r[2] if has_article else None)) for r in rows]
+
     success_count = 0
     fail_count = 0
-    
-    for i, (product_id, product_name) in enumerate(products, 1):
+
+    for i, (product_id, product_name, scraped_article) in enumerate(products, 1):
         logger.info(f"[{i}/{len(products)}] Parsing: {product_name}")
-        
+
         # Parse with YandexGPT
         specs = await parse_product_name_with_gpt(product_name)
-        
+
+        # Артикул проставляется только из данных скрейпера (products.article).
+        # GPT его не определяет, поэтому перезаписываем безусловно.
+        if specs is not None:
+            specs['article'] = scraped_article
+
         if specs:
             # Save to database
             save_parsed_specs(conn, product_id, specs)

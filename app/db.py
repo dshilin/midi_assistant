@@ -51,11 +51,27 @@ def get_products(
     params = []
 
     if product_type:
-        query += " AND (s.product_type LIKE ? OR s.product_type LIKE ?)"
-        p = product_type.strip()
-        capitalized = p[0].upper() + p[1:] if p else p
-        params.append(f"%{p}%")
-        params.append(f"%{capitalized}%")
+        raw = product_type.strip()
+        # Каждый термин ищем и в product_type, и в названии, в двух регистрах:
+        # LIKE в SQLite для кириллицы регистрозависим, поэтому нужен и капитализированный
+        # вариант. Помимо полной строки берём отдельные слова ("кварц винил" → "кварц", "винил";
+        # "кварцвинил" целиком найдёт "Кварц-виниловое").
+        seen = set()
+        terms = []
+        for t in [raw] + raw.replace('-', ' ').replace(',', ' ').split():
+            t = t.strip()
+            if len(t) >= 2 and t.lower() not in seen:
+                seen.add(t.lower())
+                terms.append(t)
+        conds = []
+        for term in terms:
+            cap = term[0].upper() + term[1:]
+            for field in ("s.product_type", "p.name"):
+                for value in (f"%{term}%", f"%{cap}%"):
+                    conds.append(f"{field} LIKE ?")
+                    params.append(value)
+        if conds:
+            query += " AND (" + " OR ".join(conds) + ")"
     if brand:
         query += " AND (s.brand LIKE ? OR s.brand LIKE ?)"
         b = brand.strip()
@@ -84,11 +100,22 @@ def get_distinct_product_types() -> List[str]:
     try:
         conn = get_conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT product_type FROM floor_covering_specs WHERE product_type IS NOT NULL ORDER BY product_type")
-        types = [r[0] for r in cursor.fetchall()]
+        types = set()
+        cursor.execute("SELECT DISTINCT product_type FROM floor_covering_specs WHERE product_type IS NOT NULL")
+        types.update(r[0] for r in cursor.fetchall())
+        # Also derive types from product names for products without parsed specs
+        keywords = {"ламинат": "Ламинат", "линолеум": "Линолеум", "ковролин": "Ковролин",
+                     "паркет": "Паркет", "винил": "Винил/SPC", "spc": "Винил/SPC",
+                     "пвх": "ПВХ", "террасн": "Террасная доска", "дпк": "ДПК",
+                     "кварц": "Кварц-винил", "пробк": "Пробка"}
+        for kw, label in keywords.items():
+            cursor.execute("SELECT 1 FROM products WHERE LOWER(name) LIKE ? LIMIT 1", (f"%{kw}%",))
+            if cursor.fetchone():
+                types.add(label)
         conn.close()
-        logger.debug("db.get_distinct_product_types found={}", len(types))
-        return types
+        result = sorted(types)
+        logger.debug("db.get_distinct_product_types found={}", len(result))
+        return result
     except Exception as e:
         logger.warning("db.get_distinct_product_types error: {}", e)
         return []
