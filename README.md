@@ -1,98 +1,113 @@
 # midi_assistant
 
-## Настройка YandexGPT парсера
+AI-консультант по напольным покрытиям для сайта и Telegram. Диалог ведёт FSM-агент,
+товары ищутся в SQLite-базе `products.db`, доступность берётся только из складской
+таблицы `stock`.
 
-### 1. Установите зависимости
+## Что внутри
+
+- `app/main.py` — FastAPI: `GET /` отдаёт `static/chat.html`, `POST /chat` запускает агента.
+- `app/tg_bot.py` — Telegram-интерфейс через aiogram 3.
+- `app/agent_fsm.py` — сценарий консультанта: discovery → selection → calculation → closing.
+- `app/db.py` — поиск товаров, выбор по ID и расчёт упаковок.
+- `app/scrape_products.py` — загрузка каталога midiltd.ru в таблицу `products`.
+- `app/parse_products_gpt.py` — разбор названий товаров через YandexGPT в `floor_covering_specs`.
+- `app/load_stock.py` — загрузка остатков 1С из `.xlsx` в таблицу `stock`.
+
+## Доступность товаров
+
+Таблица `stock` — единственный источник доступности для консультанта.
+
+Товар показывается и выбирается только если:
+
+```sql
+products.article = stock.article AND stock.quantity > 0
+```
+
+Товары без артикула, без строки в `stock` или с остатком `<= 0` не попадают в поиск
+и не проходят выбор по ID.
+
+## Быстрый старт
 
 ```bash
 pip install -r requirements.txt
-```
-
-### 2. Настройте переменные окружения
-
-Скопируйте файл `.env.example` в `.env` и укажите ваши учетные данные:
-
-```bash
 cp .env.example .env
 ```
 
-Отредактируйте файл `.env`:
+Заполните `.env`:
 
+```env
+LLM_PROVIDER=openai
+LLM_API_KEY=...
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-4o-mini
+
+# Для YandexGPT и парсера товаров
+YC_API_KEY=...
+YC_FOLDER_ID=...
+
+# Для Telegram-бота
+TELEGRAM_BOT_TOKEN=...
 ```
-YC_API_KEY=your_api_key_here
-YC_FOLDER_ID=your_folder_id_here
-```
 
-Получить API ключ можно в [Yandex Cloud Console](https://console.cloud.yandex.ru/).
+## Подготовка базы
 
-### 3. Запустите парсер
+Запускайте шаги по порядку:
 
-**Парсинг всех продуктов:**
 ```bash
-python parse_products_gpt.py
+python3 -m app.scrape_products
+python3 -m app.parse_products_gpt
+python3 -m app.load_stock "Остатки на 09.08.26.xlsx"
 ```
 
-**Парсинг конкретного продукта по ID:**
+Что делают шаги:
+
+- `scrape_products` полностью пересобирает `products` и сохраняет `name`, `url`, `price`, `article`.
+- `parse_products_gpt` заполняет `floor_covering_specs`; артикул не угадывает, а переносит из `products.article`.
+- `load_stock` полностью пересобирает `stock` из выгрузки 1С: A — артикул, C — номенклатура, G — ед. изм., K — конечный остаток.
+
+Подробности пайплайна: `PARSER_README.md`.
+
+## Запуск
+
+Web-интерфейс:
+
 ```bash
-python parse_products_gpt.py --id 70
+uvicorn app.main:app --reload
 ```
 
-**Парсинг нескольких продуктов по списку ID:**
+Telegram-бот:
+
 ```bash
-python parse_products_gpt.py --ids 70,71,72
+python3 -m app.tg_bot
 ```
 
-Скрипт:
-- Прочитает все названия продуктов из `products.db` (или указанные ID)
-- Отправит каждое название в YandexGPT для извлечения характеристик
-- Сохранит структурированные данные в таблицу `floor_covering_specs`
+## Поиск и расчёт
 
-## Логирование
+Консультант хранит состояние пользователя в памяти процесса: тип покрытия, цвет,
+бренд, площадь, выбранный товар и стадию диалога.
 
-Все действия логируются с помощью библиотеки `loguru`:
+Поиск поддерживает:
 
-- **Консоль** — вывод сообщений уровня INFO и выше
-- **Файл** — детальные логи в папке `logs/` с ротацией по дням (уровень DEBUG)
+- тип покрытия по `floor_covering_specs.product_type` и `products.name`;
+- бренд по `floor_covering_specs.brand`;
+- цвет с группами синонимов, например `темный` ищет также `черный`, `венге`, `графит`;
+- нормализацию `ё → е` и игнорирование строкового `"null"`.
 
-Логи автоматически исключены из системы контроля версий.
+Расчёт материалов использует `area_per_pack_m2` выбранного товара и запас 10%.
 
-## Извлекаемые поля
+## Тесты
 
-- `product_type` - тип продукта (Ламинат, Винил, LVT, SPC и т.д.)
-- `brand` - бренд/производитель
-- `collection` - коллекция
-- `model` - модель/название дизайна
-- `length_mm` - длина в мм
-- `width_mm` - ширина в мм
-- `thickness_mm` - толщина в мм
-- `length_m` - длина в метрах
-- `pieces_per_pack` - количество штук в упаковке
-- `area_per_pack_m2` - площадь в м² в упаковке
-- `packs_per_pallet` - количество упаковок на паллете
-- `wear_class` - класс износостойкости
-
-## Пример
-
-**Входное название:**
-```
-Ламинат EUROHOME MAJESTIC Дуб Викинг Золотой 1285*192*8мм (9шт/уп,2.22кв.м,52уп/пал) 33класс
+```bash
+python3 -m pytest tests/ -v
 ```
 
-**Результат:**
-```json
-{
-  "product_type": "Ламинат",
-  "brand": "EUROHOME",
-  "collection": "MAJESTIC",
-  "model": "Дуб Викинг Золотой",
-  "length_mm": 1285,
-  "width_mm": 192,
-  "thickness_mm": 8,
-  "pieces_per_pack": 9,
-  "area_per_pack_m2": 2.22,
-  "packs_per_pallet": 52,
-  "wear_class": "33класс"
-}
-```
+## Логи
 
-> **Важно:** Файл `.env` содержит конфиденциальные данные и не должен попадать в систему контроля версий. Он автоматически исключен через `.gitignore`.
+Парсер пишет подробные логи в `logs/parser_YYYY-MM-DD.log`; каталог `logs/`
+исключён из git.
+
+## Безопасность
+
+`.env` содержит ключи API и Telegram-токен. Не коммитьте его; файл исключён через
+`.gitignore`.
