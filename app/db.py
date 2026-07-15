@@ -103,7 +103,13 @@ def get_distinct_product_types() -> List[str]:
         conn = get_conn()
         cursor = conn.cursor()
         types = set()
-        cursor.execute("SELECT DISTINCT product_type FROM floor_covering_specs WHERE product_type IS NOT NULL")
+        cursor.execute("""
+            SELECT DISTINCT s.product_type
+            FROM floor_covering_specs s
+            INNER JOIN products p ON p.id = s.product_id
+            INNER JOIN stock st ON st.article = p.article AND st.quantity > 0
+            WHERE s.product_type IS NOT NULL
+        """)
         types.update(r[0] for r in cursor.fetchall())
         # Also derive types from product names for products without parsed specs
         keywords = {"ламинат": "Ламинат", "линолеум": "Линолеум", "ковролин": "Ковролин",
@@ -111,7 +117,11 @@ def get_distinct_product_types() -> List[str]:
                      "пвх": "ПВХ", "террасн": "Террасная доска", "дпк": "ДПК",
                      "кварц": "Кварц-винил", "пробк": "Пробка"}
         for kw, label in keywords.items():
-            cursor.execute("SELECT 1 FROM products WHERE LOWER(name) LIKE ? LIMIT 1", (f"%{kw}%",))
+            cursor.execute("""
+                SELECT 1 FROM products p
+                INNER JOIN stock st ON st.article = p.article AND st.quantity > 0
+                WHERE LOWER(p.name) LIKE ? LIMIT 1
+            """, (f"%{kw}%",))
             if cursor.fetchone():
                 types.add(label)
         conn.close()
