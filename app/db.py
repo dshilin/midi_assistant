@@ -43,8 +43,10 @@ def get_products(
     query = """
         SELECT p.id, p.name, p.price, s.product_type, s.brand, s.collection, s.model, s.color,
                s.length_mm, s.width_mm, s.thickness_mm, s.pieces_per_pack,
-               s.area_per_pack_m2, s.packs_per_pallet, s.wear_class
+               s.area_per_pack_m2, s.packs_per_pallet, s.wear_class,
+               st.quantity AS stock_quantity
         FROM products p
+        INNER JOIN stock st ON st.article = p.article AND st.quantity > 0
         LEFT JOIN floor_covering_specs s ON p.id = s.product_id
         WHERE 1=1
     """
@@ -128,8 +130,10 @@ def get_product_by_id(product_id: int) -> Optional[Dict]:
     cursor.execute("""
         SELECT p.id, p.name, p.price, s.product_type, s.brand, s.collection, s.model, s.color,
                s.length_mm, s.width_mm, s.thickness_mm, s.pieces_per_pack,
-               s.area_per_pack_m2, s.packs_per_pallet, s.wear_class
+               s.area_per_pack_m2, s.packs_per_pallet, s.wear_class,
+               st.quantity AS stock_quantity
         FROM products p
+        INNER JOIN stock st ON st.article = p.article AND st.quantity > 0
         LEFT JOIN floor_covering_specs s ON p.id = s.product_id
         WHERE p.id = ?
     """, (product_id,))
