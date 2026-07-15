@@ -45,16 +45,19 @@ def _setup_db(path):
         (2, "Ламинат без остатка", 1100, "A-2"),
         (3, "Ламинат не в stock", 1200, "A-3"),
         (4, "Ламинат без артикула", 1300, None),
+        (5, "Ламинат отрицательный остаток", 1400, "A-5"),
     ]
     specs = [
         (1, 1, "Ламинат", "Brand", None, None, "серый", None, None, None, None, 2.0, None, None),
         (2, 2, "Ламинат", "Brand", None, None, "серый", None, None, None, None, 2.0, None, None),
         (3, 3, "Ламинат", "Brand", None, None, "серый", None, None, None, None, 2.0, None, None),
         (4, 4, "Ламинат", "Brand", None, None, "серый", None, None, None, None, 2.0, None, None),
+        (5, 5, "Ламинат", "Brand", None, None, "серый", None, None, None, None, 2.0, None, None),
     ]
     stock = [
         ("A-1", "Ламинат доступный", "уп", 5),
         ("A-2", "Ламинат без остатка", "уп", 0),
+        ("A-5", "Ламинат отрицательный остаток", "уп", -1),
     ]
     cursor.executemany("INSERT INTO products VALUES (?, ?, ?, ?)", products)
     cursor.executemany(
@@ -74,6 +77,7 @@ def test_get_products_returns_only_positive_stock(tmp_path, monkeypatch):
     products = db.get_products(product_type="ламинат", limit=10)
 
     assert [p["id"] for p in products] == [1]
+    assert 5 not in [p["id"] for p in products]
     assert products[0]["stock_quantity"] == 5
 
 
@@ -86,3 +90,4 @@ def test_get_product_by_id_requires_positive_stock(tmp_path, monkeypatch):
     assert db.get_product_by_id(2) is None
     assert db.get_product_by_id(3) is None
     assert db.get_product_by_id(4) is None
+    assert db.get_product_by_id(5) is None
