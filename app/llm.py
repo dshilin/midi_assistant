@@ -33,6 +33,7 @@ async def _llm_openai(messages: List[Message], system: Optional[str] = None) -> 
 
 async def _llm_yandexgpt(messages: List[Message], system: Optional[str] = None) -> Optional[str]:
     import httpx
+    import asyncio
     api_key = os.getenv("YC_API_KEY", "")
     folder_id = os.getenv("YC_FOLDER_ID", "")
     if not api_key or not folder_id:
@@ -57,15 +58,26 @@ async def _llm_yandexgpt(messages: List[Message], system: Optional[str] = None) 
         },
         "messages": payload_messages,
     }
-    async with httpx.AsyncClient(timeout=60) as client:
-        response = await client.post(url, headers=headers, json=payload)
-        if response.is_error:
-            logger.error("yandexgpt error status={}", response.status_code)
+    for attempt in range(2):
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                if response.is_error:
+                    body = response.text[:500]
+                    logger.error("yandexgpt error status={} body={}", response.status_code, body)
+                    if attempt == 0:
+                        await asyncio.sleep(1)
+                        continue
+                    return None
+                content = response.json()["result"]["alternatives"][0]["message"]["text"]
+                logger.debug("yandexgpt response_len={}", len(content))
+                return content
+        except Exception as e:
+            logger.error("yandexgpt exception attempt={} error={}", attempt, e)
+            if attempt == 0:
+                await asyncio.sleep(1)
+                continue
             return None
-        data = response.json()
-        content = data["result"]["alternatives"][0]["message"]["text"]
-        logger.debug("yandexgpt response_len={}", len(content))
-        return content
 
 
 async def llm_chat(messages: List[Message], system: Optional[str] = None) -> Optional[str]:
