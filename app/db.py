@@ -20,12 +20,20 @@ def _clean(val):
 COLOR_GROUPS = {
     "темный": ["темный", "черный", "коричневый", "венге", "графит", "вишневый", "шоколадный"],
     "черный": ["черный", "темный", "венге", "графит"],
-    "коричневый": ["коричневый", "венге", "шоколадный", "темный"],
-    "светлый": ["светлый", "белый", "желтый", "золотой", "серебристый"],
+    "коричневый": ["коричневый", "венге", "шоколадный", "темный", "дуб"],
+    "светлый": ["светлый", "белый", "желтый", "золотой", "серебристый", "песочный", "солнечный"],
     "белый": ["белый", "светлый", "серебристый"],
     "серый": ["серый", "графит", "серебристый"],
     "золотой": ["золотой", "желтый", "светлый"],
 }
+
+
+def _expand_colors(colors: List[str]) -> List[str]:
+    expanded = set(colors)
+    for c in colors:
+        if c in COLOR_GROUPS:
+            expanded.update(COLOR_GROUPS[c])
+    return list(expanded)
 
 
 def get_products(
@@ -81,8 +89,9 @@ def get_products(
         params.append(f"%{b}%")
         params.append(f"%{capitalized}%")
     if color:
-        colors = set(COLOR_GROUPS.get(color, [color]))
-        colors.add(color)
+        colors = COLOR_GROUPS.get(color, [color])
+        colors = _expand_colors(colors)
+        colors = list(set(colors + [color]))
         placeholders = " OR ".join(["s.color LIKE ?" for _ in colors])
         query += f" AND ({placeholders})"
         params.extend([f"%{c}%" for c in colors])
