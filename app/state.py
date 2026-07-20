@@ -15,6 +15,7 @@ DEFAULT_STATE: dict = {
     "budget": None,
     "selected_product": None,
     "last_shown_products": None,
+    "calculation_shown": False,
     "stage": "discovery",
 }
 

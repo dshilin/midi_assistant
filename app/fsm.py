@@ -24,5 +24,9 @@ def next_stage(state: dict) -> str:
                          state.get("selected_product"))
             return "calculation"
 
-    # calculation and closing stay as-is until explicit change
+    elif current == "calculation":
+        if state.get("calculation_shown"):
+            logger.debug("fsm calculation → closing")
+            return "closing"
+
     return current

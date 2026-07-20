@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Tuple
 from loguru import logger
 
-from app.state import get_state, update_state, get_history, append_history
+from app.state import get_state, update_state, get_history, append_history, reset_state
 from app.fsm import next_stage
 from app.extractor import extract_entities
 from app.prompts import build_system_prompt
@@ -106,7 +106,16 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
         message, current_state=state, products=shown_products, last_assistant=last_assistant
     )
 
-    # 3. Map selected_product_index → actual product ID
+    # 3a. Restart if user agrees in closing stage
+    if state.get("stage") == "closing" and extracted.get("restart"):
+        logger.info("agent user requested restart")
+        state = reset_state(user_id)
+        response = "Начнём заново! Какое напольное покрытие вас интересует?"
+        append_history(user_id, "user", message)
+        append_history(user_id, "assistant", response)
+        return response, state
+
+    # 3b. Map selected_product_index → actual product ID
     selected_idx = extracted.pop("selected_product_index", None)
     if selected_idx is not None and shown_products:
         idx = int(selected_idx) - 1
@@ -178,6 +187,7 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
                             calc_lines.append(f"Цена за упаковку: {pp:.0f} ₽")
                             calc_lines.append(f"Общая стоимость: {total:.0f} ₽")
                         calculation_block += "\n".join(calc_lines)
+                        state = update_state(user_id, {"calculation_shown": True})
 
     # 5. Build the system prompt and dialog messages
     system_prompt = build_system_prompt(state)
