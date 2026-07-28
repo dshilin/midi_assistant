@@ -1,3 +1,4 @@
+import re
 from typing import Dict, List, Optional, Tuple
 from loguru import logger
 
@@ -172,7 +173,11 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
                     if calc:
                         packs = calc['packs_needed']
                         raw_price = product.get("price")
-                        price = float(raw_price) if raw_price and str(raw_price).lower() != "null" else None
+                        price = None
+                        if raw_price and str(raw_price).lower() != "null":
+                            m = re.search(r'[\d.]+', str(raw_price))
+                            if m:
+                                price = float(m.group())
                         pieces = product.get("pieces_per_pack")
                         calc_lines = [
                             f"\n\nРасчёт материалов:",

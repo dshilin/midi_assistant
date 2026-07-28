@@ -4,7 +4,6 @@ STATES = [
     "discovery",
     "selection",
     "calculation",
-    "objection",
     "closing",
 ]
 
