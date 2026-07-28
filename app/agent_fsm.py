@@ -209,6 +209,13 @@ async def run_fsm_agent(user_id: str, message: str) -> Tuple[str, Dict]:
         logger.error("agent no response from llm user={}", user_id)
         return "Извините, произошла ошибка. Попробуйте ещё раз.", state
 
+    # 6. Strip hallucinated dialogue (LLM sometimes writes both roles)
+    for prefix in ("Пользователь:", "пользователь:", "Ассистент:", "ассистент:"):
+        idx = response.find(f"\n{prefix}")
+        if idx != -1:
+            response = response[:idx].rstrip()
+            logger.warning("agent stripped hallucinated dialogue after '{}-'", prefix.strip(":"))
+
     append_history(user_id, "user", message)
     append_history(user_id, "assistant", response)
 
