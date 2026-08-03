@@ -10,6 +10,7 @@ from app.parse_products_gpt import (
     parse_product_name_with_gpt,
     get_yandex_gpt_response,
     parse_all_products,
+    main_async,
 )
 
 
@@ -463,3 +464,27 @@ class TestIntegration:
             assert result[9] == 2.22
             assert result[10] == 52
             assert result[11] == "33класс"
+
+
+@pytest.mark.asyncio
+async def test_main_async_writes_to_custom_db(tmp_path):
+    db = tmp_path / "p.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute("""CREATE TABLE products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        url TEXT,
+        price TEXT,
+        created_at TIMESTAMP
+    )""")
+    conn.execute("INSERT INTO products (name, price) VALUES ('Ламинат X', '100')")
+    conn.commit()
+    conn.close()
+
+    with patch("app.parse_products_gpt.parse_product_name_with_gpt", new_callable=AsyncMock) as m:
+        m.return_value = {"product_type": "Ламинат", "color": "белый"}
+        await main_async(db_path=str(db))
+
+    conn = sqlite3.connect(str(db))
+    assert conn.execute("SELECT COUNT(*) FROM floor_covering_specs").fetchone()[0] == 1
+    conn.close()

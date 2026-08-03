@@ -361,21 +361,22 @@ async def parse_all_products(conn, product_ids=None):
     logger.error(f"Failed: {fail_count}")
 
 
-async def main_async(product_ids=None):
+async def main_async(product_ids=None, db_path=None):
     """Main async function to orchestrate parsing.
     
     Args:
         product_ids: Optional list of product IDs to parse. If None, parses all products.
     """
+    db_path = db_path or DB_PATH
     logger.info("Starting YandexGPT product parsing...")
-    logger.info(f"Database: {DB_PATH}")
+    logger.info(f"Database: {db_path}")
     if product_ids:
         logger.info(f"Parsing specific product IDs: {product_ids}")
     else:
         logger.info("Parsing ALL products")
     
     # Connect to database
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(db_path)
     
     try:
         # Create table
