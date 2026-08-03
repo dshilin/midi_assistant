@@ -9,7 +9,7 @@ from app.state import reset_state, update_state
 @pytest.fixture(autouse=True)
 def stub_types(monkeypatch):
     """Убираем зависимость от products.db: типы ассортимента фиксированы."""
-    types = lambda: ["Ламинат", "Винил"]
+    types = lambda **kw: ["Ламинат", "Винил"]
     monkeypatch.setattr("app.agent_fsm.get_distinct_product_types", types)
     monkeypatch.setattr("app.prompts.get_distinct_product_types", types)
 
@@ -93,7 +93,7 @@ async def test_selected_index_maps_to_product_and_advances(monkeypatch):
         10: {"id": 10, "name": "Ламинат X", "price": 100},
         20: {"id": 20, "name": "Ламинат Y", "price": 150},
     }
-    monkeypatch.setattr("app.agent_fsm.get_product_by_id", lambda pid: by_id.get(pid))
+    monkeypatch.setattr("app.agent_fsm.get_product_by_id", lambda pid, **kw: by_id.get(pid))
     monkeypatch.setattr("app.agent_fsm.get_products", lambda **kw: [])
     monkeypatch.setattr(
         "app.agent_fsm.extract_entities", AsyncMock(return_value={"selected_product_index": 2})
