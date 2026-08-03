@@ -1,0 +1,4 @@
+name = "MIDI"
+slug = "midi"
+bot_token = ""
+site_url = "https://midiltd.ru/catalog/napolnye_pokrytiya/filter/in_stock-is-y/apply/?SHOWALL_1=1"

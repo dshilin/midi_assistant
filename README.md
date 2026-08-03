@@ -50,23 +50,19 @@ YC_FOLDER_ID=...
 TELEGRAM_BOT_TOKEN=...
 ```
 
-## Подготовка базы
+## Подготовка базы клиента
 
-Запускайте шаги по порядку:
+Каждый клиент — папка `clients/<slug>` с `config.toml`, каталогом
+(`catalog.csv` или `catalog.xlsx` с шапкой: артикул/код, наименование/название,
+цена, ссылка), остатками `stock.xlsx` и своей БД. Загрузка клиента целиком:
 
 ```bash
-python3 -m app.scrape_products
-python3 -m app.parse_products_gpt
-python3 -m app.load_stock "Остатки на 09.08.26.xlsx"
+python3 -m app.ingest midi            # каталог + остатки + GPT-разбор спек
+python3 -m app.ingest midi --no-parse # без вызова YandexGPT
 ```
 
-Что делают шаги:
-
-- `scrape_products` полностью пересобирает `products` и сохраняет `name`, `url`, `price`, `article`.
-- `parse_products_gpt` заполняет `floor_covering_specs`; артикул не угадывает, а переносит из `products.article`.
-- `load_stock` полностью пересобирает `stock` из выгрузки 1С: A — артикул, C — номенклатура, G — ед. изм., K — конечный остаток.
-
-Подробности пайплайна: `PARSER_README.md`.
+Как формируется каталог — зависит от клиента: скрейп сайта или экспорт из
+админки. Скрейп midiltd.ru: `python3 clients/midi/scrape.py`.
 
 ## Запуск
 
