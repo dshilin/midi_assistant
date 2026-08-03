@@ -1,4 +1,7 @@
 *.db
+
+# local git worktrees
+.worktrees/
 logs/
 
 # Claude Code local (personal) settings
