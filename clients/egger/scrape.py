@@ -72,6 +72,8 @@ def scrape() -> list[dict]:
 
 def main():
     products = scrape()
+    if not products:
+        raise SystemExit("Не найдено товаров — изменилась структура сайта")
     print(f"Найдено: {len(products)}")
     with open(OUT, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
