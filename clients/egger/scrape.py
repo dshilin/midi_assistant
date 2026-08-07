@@ -16,7 +16,7 @@ OUT = os.path.join(os.path.dirname(__file__), "catalog.csv")
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
-ARTICLE_RE = re.compile(r"^([A-Z]{2,3}\d{3})\b")
+ARTICLE_RE = re.compile(r"^([A-Z]{2,3}\d{3}[A-Z]{0,2})\b")
 
 
 def fetch(url: str) -> BeautifulSoup:
