@@ -34,3 +34,11 @@ def require_client(slug: str) -> dict:
 
 def get_db_path(slug: str) -> str:
     return os.path.join(CLIENTS_DIR, slug, "products.db")
+
+
+def default_client_slug() -> str:
+    """Первый настроенный клиент (конфиг-управляемый дефолт вместо хардкода бренда)."""
+    clients = sorted(list_clients())
+    if not clients:
+        raise ValueError("no clients configured")
+    return clients[0]

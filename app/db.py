@@ -42,6 +42,7 @@ def get_products(
     color: Optional[str] = None,
     limit: int = 10,
     db_path=None,
+    use_stock: bool = True,
 ) -> List[Dict]:
     product_type = _clean(product_type)
     brand = _clean(brand)
@@ -49,13 +50,18 @@ def get_products(
     logger.debug("db.get_products type={} brand={} color={}", product_type, brand, color)
     conn = get_conn(db_path)
     cursor = conn.cursor()
-    query = """
+    stock_join = (
+        "INNER JOIN stock st ON st.article = p.article AND st.quantity > 0"
+        if use_stock else ""
+    )
+    stock_expr = "st.quantity" if use_stock else "1"
+    query = f"""
         SELECT p.id, p.name, p.price, s.product_type, s.brand, s.collection, s.model, s.color,
                s.length_mm, s.width_mm, s.thickness_mm, s.pieces_per_pack,
                s.area_per_pack_m2, s.packs_per_pallet, s.wear_class,
-               st.quantity AS stock_quantity
+               {stock_expr} AS stock_quantity
         FROM products p
-        INNER JOIN stock st ON st.article = p.article AND st.quantity > 0
+        {stock_join}
         LEFT JOIN floor_covering_specs s ON p.id = s.product_id
         WHERE 1=1
     """
@@ -117,7 +123,6 @@ def get_distinct_product_types(db_path=None) -> List[str]:
             SELECT DISTINCT s.product_type
             FROM floor_covering_specs s
             INNER JOIN products p ON p.id = s.product_id
-            INNER JOIN stock st ON st.article = p.article AND st.quantity > 0
             WHERE s.product_type IS NOT NULL
         """)
         types.update(r[0] for r in cursor.fetchall())
@@ -129,7 +134,6 @@ def get_distinct_product_types(db_path=None) -> List[str]:
         for kw, label in keywords.items():
             cursor.execute("""
                 SELECT 1 FROM products p
-                INNER JOIN stock st ON st.article = p.article AND st.quantity > 0
                 WHERE LOWER(p.name) LIKE ? LIMIT 1
             """, (f"%{kw}%",))
             if cursor.fetchone():
@@ -143,17 +147,22 @@ def get_distinct_product_types(db_path=None) -> List[str]:
         return []
 
 
-def get_product_by_id(product_id: int, db_path=None) -> Optional[Dict]:
+def get_product_by_id(product_id: int, db_path=None, use_stock: bool = True) -> Optional[Dict]:
     logger.debug("db.get_product_by_id id={}", product_id)
     conn = get_conn(db_path)
     cursor = conn.cursor()
-    cursor.execute("""
+    stock_join = (
+        "INNER JOIN stock st ON st.article = p.article AND st.quantity > 0"
+        if use_stock else ""
+    )
+    stock_expr = "st.quantity" if use_stock else "1"
+    cursor.execute(f"""
         SELECT p.id, p.name, p.price, s.product_type, s.brand, s.collection, s.model, s.color,
                s.length_mm, s.width_mm, s.thickness_mm, s.pieces_per_pack,
                s.area_per_pack_m2, s.packs_per_pallet, s.wear_class,
-               st.quantity AS stock_quantity
+               {stock_expr} AS stock_quantity
         FROM products p
-        INNER JOIN stock st ON st.article = p.article AND st.quantity > 0
+        {stock_join}
         LEFT JOIN floor_covering_specs s ON p.id = s.product_id
         WHERE p.id = ?
     """, (product_id,))
@@ -164,7 +173,7 @@ def get_product_by_id(product_id: int, db_path=None) -> Optional[Dict]:
     return dict(row) if row else None
 
 
-def calculate_material(area: float, product_id: int, db_path=None) -> Optional[Dict]:
+def calculate_material(area: float, product_id: int, db_path=None, use_stock: bool = True) -> Optional[Dict]:
     area = _clean(area)
     if area is not None:
         try:
@@ -174,7 +183,7 @@ def calculate_material(area: float, product_id: int, db_path=None) -> Optional[D
             return None
     product_id = _clean(product_id)
     logger.debug("db.calculate_material area={} product_id={}", area, product_id)
-    product = get_product_by_id(product_id, db_path=db_path)
+    product = get_product_by_id(product_id, db_path=db_path, use_stock=use_stock)
     if not product:
         logger.warning("db.calculate_material product not found id={}", product_id)
         return None

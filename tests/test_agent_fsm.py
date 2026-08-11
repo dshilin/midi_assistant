@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -104,3 +104,22 @@ async def test_selected_index_maps_to_product_and_advances(monkeypatch):
 
     assert state["selected_product"] == 20
     assert state["stage"] == "calculation"
+
+
+@pytest.mark.asyncio
+async def test_use_stock_flag_comes_from_client_config(monkeypatch):
+    """use_stock берётся из конфига клиента и уходит в выборку товаров."""
+    reset_state("u5")
+    update_state("u5", {"type": "ламинат"})
+    update_state("u5", {}, stage="selection")
+
+    monkeypatch.setattr("app.agent_fsm.extract_entities", AsyncMock(return_value={}))
+    monkeypatch.setattr("app.agent_fsm.get_client", lambda slug: {"use_stock": False})
+    get_products = Mock(return_value=[])
+    monkeypatch.setattr("app.agent_fsm.get_products", get_products)
+    monkeypatch.setattr("app.agent_fsm.llm_chat", AsyncMock(return_value="ответ"))
+
+    await run_fsm_agent("u5", "покажи", client_slug="egger")
+
+    assert get_products.called
+    assert get_products.call_args.kwargs["use_stock"] is False

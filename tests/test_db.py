@@ -81,6 +81,19 @@ def test_get_products_returns_only_positive_stock(tmp_path, monkeypatch):
     assert products[0]["stock_quantity"] == 5
 
 
+def test_get_products_without_stock_returns_all_catalog(tmp_path, monkeypatch):
+    db_path = tmp_path / "products.db"
+    _setup_db(db_path)
+    monkeypatch.setattr(db, "DB_PATH", str(db_path))
+
+    products = db.get_products(product_type="ламинат", limit=10, use_stock=False)
+
+    assert sorted(p["id"] for p in products) == [1, 2, 3, 4, 5]
+    assert all(p["stock_quantity"] == 1 for p in products)
+    assert db.get_product_by_id(3, use_stock=False)["stock_quantity"] == 1
+    assert db.get_product_by_id(3, use_stock=True) is None
+
+
 def test_get_product_by_id_requires_positive_stock(tmp_path, monkeypatch):
     db_path = tmp_path / "products.db"
     _setup_db(db_path)

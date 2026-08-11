@@ -14,12 +14,13 @@ def _reg(tmp_path, monkeypatch):
         (d / "config.toml").write_text(f'name = "{slug}"\n', encoding="utf-8")
 
 
-def test_legacy_root(tmp_path, monkeypatch):
+def test_legacy_root_redirects_to_default_client(tmp_path, monkeypatch):
     _reg(tmp_path, monkeypatch)
 
-    r = TestClient(app).get("/")
+    r = TestClient(app).get("/", follow_redirects=False)
 
-    assert r.status_code == 200
+    assert r.status_code == 307
+    assert r.headers["location"] == "/midi"
 
 
 def test_site_index_unknown_client_404(tmp_path, monkeypatch):
@@ -36,7 +37,7 @@ def test_site_index_serves_html(tmp_path, monkeypatch):
     assert r.status_code == 200
 
 
-def test_legacy_chat_routes_to_midi(tmp_path, monkeypatch):
+def test_legacy_chat_routes_to_default_client(tmp_path, monkeypatch):
     _reg(tmp_path, monkeypatch)
     with patch("app.main.run_fsm_agent", new_callable=AsyncMock) as agent:
         agent.return_value = ("ответ", {"stage": "discovery"})
@@ -44,6 +45,19 @@ def test_legacy_chat_routes_to_midi(tmp_path, monkeypatch):
 
     assert r.status_code == 200
     agent.assert_awaited_once_with("web:midi:u1", "привет", client_slug="midi")
+
+
+def test_legacy_chat_default_not_hardcoded(tmp_path, monkeypatch):
+    _reg(tmp_path, monkeypatch)
+    d = tmp_path / "aaa"
+    d.mkdir()
+    (d / "config.toml").write_text('name = "aaa"\n', encoding="utf-8")
+    with patch("app.main.run_fsm_agent", new_callable=AsyncMock) as agent:
+        agent.return_value = ("ответ", {"stage": "discovery"})
+        r = TestClient(app).post("/chat", json={"user_id": "u1", "message": "привет"})
+
+    assert r.status_code == 200
+    agent.assert_awaited_once_with("web:aaa:u1", "привет", client_slug="aaa")
 
 
 def test_site_chat_routes_by_slug(tmp_path, monkeypatch):

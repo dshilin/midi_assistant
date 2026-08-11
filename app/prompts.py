@@ -22,8 +22,8 @@ def _fmt(value, suffix: str = "") -> str:
     return f"{value}{suffix}"
 
 
-def build_system_prompt(state: dict) -> str:
-    types = get_distinct_product_types()
+def build_system_prompt(state: dict, db_path: str | None = None) -> str:
+    types = get_distinct_product_types(db_path=db_path)
     assortment = f"АССОРТИМЕНТ БАЗЫ: {', '.join(types)}.\n\n" if types else ""
 
     stage = state.get("stage", "discovery")
