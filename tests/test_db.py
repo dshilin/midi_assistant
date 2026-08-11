@@ -48,11 +48,11 @@ def _setup_db(path):
         (5, "Ламинат отрицательный остаток", 1400, "A-5"),
     ]
     specs = [
-        (1, 1, "Ламинат", "Brand", None, None, "серый", None, None, None, None, 2.0, None, None),
-        (2, 2, "Ламинат", "Brand", None, None, "серый", None, None, None, None, 2.0, None, None),
-        (3, 3, "Ламинат", "Brand", None, None, "серый", None, None, None, None, 2.0, None, None),
-        (4, 4, "Ламинат", "Brand", None, None, "серый", None, None, None, None, 2.0, None, None),
-        (5, 5, "Ламинат", "Brand", None, None, "серый", None, None, None, None, 2.0, None, None),
+        (1, 1, "Ламинат", "Brand", None, None, "серый", None, None, 8, None, 2.0, None, None),
+        (2, 2, "Ламинат", "Brand", None, None, "серый", None, None, 10, None, 2.0, None, None),
+        (3, 3, "Ламинат", "Brand", None, None, "серый", None, None, 12, None, 2.0, None, None),
+        (4, 4, "Ламинат", "Brand", None, None, "серый", None, None, 10, None, 2.0, None, None),
+        (5, 5, "Ламинат", "Brand", None, None, "серый", None, None, 8, None, 2.0, None, None),
     ]
     stock = [
         ("A-1", "Ламинат доступный", "уп", 5),
@@ -90,6 +90,17 @@ def test_color_matches_spec_and_name(tmp_path, monkeypatch):
     assert [p["id"] for p in db.get_products(color="серый", use_stock=False, limit=10)] == [1, 2, 3, 4, 5]
     assert [p["id"] for p in db.get_products(color="доступный", limit=10)] == [1]
     assert [p["id"] for p in db.get_products(color="ламинат", use_stock=False, limit=10)] == [1, 2, 3, 4, 5]
+
+
+def test_min_thickness_filters_by_spec_thickness(tmp_path, monkeypatch):
+    """«толще 8 мм» — выдача с толщиной >= 9, товары 8 мм исключаются."""
+    db_path = tmp_path / "products.db"
+    _setup_db(db_path)
+    monkeypatch.setattr(db, "DB_PATH", str(db_path))
+
+    assert [p["id"] for p in db.get_products(min_thickness=8, use_stock=False, limit=10)] == [1, 2, 3, 4, 5]
+    assert [p["id"] for p in db.get_products(min_thickness=9, use_stock=False, limit=10)] == [2, 3, 4]
+    assert [p["id"] for p in db.get_products(min_thickness=12, use_stock=False, limit=10)] == [3]
 
 
 def test_get_products_without_stock_returns_all_catalog(tmp_path, monkeypatch):

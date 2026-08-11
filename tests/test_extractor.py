@@ -73,6 +73,7 @@ async def test_rejects_inferring_type_from_color(monkeypatch):
 
     prompt = llm.await_args.args[0]
     assert "ЗАПРЕЩЕНО ВЫДУМЫВАТЬ ТИП ПО КОСВЕННЫМ ПРИЗНАКАМ" in prompt
+    assert "min_thickness" in prompt
     assert result["type"] is None and result["color"] == "дуб"
 
 

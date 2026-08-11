@@ -13,6 +13,7 @@ DEFAULT_STATE: dict = {
     "color": None,
     "brand": None,
     "budget": None,
+    "min_thickness": None,
     "selected_product": None,
     "last_shown_products": None,
     "calculation_shown": False,

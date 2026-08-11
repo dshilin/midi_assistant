@@ -17,6 +17,7 @@ CRITERIA_LABELS = {
     "area": "площадь",
     "budget": "бюджет",
     "room_type": "помещение",
+    "min_thickness": "мин. толщина",
 }
 
 
@@ -78,6 +79,7 @@ def _fetch_products_by_criteria(state: Dict, db_path: str, use_stock: bool = Tru
         product_type=state.get("type"),
         brand=state.get("brand"),
         color=state.get("color"),
+        min_thickness=state.get("min_thickness"),
         db_path=db_path,
         use_stock=use_stock,
     )

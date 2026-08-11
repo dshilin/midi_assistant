@@ -40,6 +40,7 @@ def get_products(
     product_type: Optional[str] = None,
     brand: Optional[str] = None,
     color: Optional[str] = None,
+    min_thickness: Optional[float] = None,
     limit: int = 10,
     db_path=None,
     use_stock: bool = True,
@@ -89,6 +90,9 @@ def get_products(
                     params.append(value)
         if conds:
             query += " AND (" + " OR ".join(conds) + ")"
+    if min_thickness is not None:
+        query += " AND s.thickness_mm >= ?"
+        params.append(float(min_thickness))
     if brand:
         query += " AND (s.brand LIKE ? OR s.brand LIKE ?)"
         b = brand.strip()
