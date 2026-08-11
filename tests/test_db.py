@@ -81,6 +81,17 @@ def test_get_products_returns_only_positive_stock(tmp_path, monkeypatch):
     assert products[0]["stock_quantity"] == 5
 
 
+def test_color_matches_spec_and_name(tmp_path, monkeypatch):
+    """Цвет ищется и в s.color, и в названии («Дуб Вэлли дымчатый» по «дуб»)."""
+    db_path = tmp_path / "products.db"
+    _setup_db(db_path)
+    monkeypatch.setattr(db, "DB_PATH", str(db_path))
+
+    assert [p["id"] for p in db.get_products(color="серый", use_stock=False, limit=10)] == [1, 2, 3, 4, 5]
+    assert [p["id"] for p in db.get_products(color="доступный", limit=10)] == [1]
+    assert [p["id"] for p in db.get_products(color="ламинат", use_stock=False, limit=10)] == [1, 2, 3, 4, 5]
+
+
 def test_get_products_without_stock_returns_all_catalog(tmp_path, monkeypatch):
     db_path = tmp_path / "products.db"
     _setup_db(db_path)

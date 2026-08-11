@@ -64,6 +64,30 @@ async def test_parses_json_wrapped_in_text(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_rejects_inferring_type_from_color(monkeypatch):
+    """«надо дуб» — только цвет, тип выдумывать запрещено (фикс ③)."""
+    llm = AsyncMock(return_value='{"type": null, "color": "дуб"}')
+    monkeypatch.setattr("app.extractor.llm_complete", llm)
+
+    result = await extract_entities("надо дуб")
+
+    prompt = llm.await_args.args[0]
+    assert "ЗАПРЕЩЕНО ВЫДУМЫВАТЬ ТИП ПО КОСВЕННЫМ ПРИЗНАКАМ" in prompt
+    assert result["type"] is None and result["color"] == "дуб"
+
+
+@pytest.mark.asyncio
+async def test_no_invent_rule_present_in_products_prompt(monkeypatch):
+    """Правило не выдумывать тип есть и в промпте с товарами."""
+    llm = AsyncMock(return_value='{"type": null, "selected_product_index": null}')
+    monkeypatch.setattr("app.extractor.llm_complete", llm)
+
+    await extract_entities("второй", products=[{"name": "A", "price": 1}])
+
+    assert "ЗАПРЕЩЕНО ВЫДУМЫВАТЬ ТИП ПО КОСВЕННЫМ ПРИЗНАКАМ" in llm.await_args.args[0]
+
+
+@pytest.mark.asyncio
 async def test_returns_empty_on_no_llm_response(monkeypatch):
     """Нет ответа LLM → пустой словарь, без исключений."""
     monkeypatch.setattr("app.extractor.llm_complete", AsyncMock(return_value=None))

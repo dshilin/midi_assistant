@@ -99,9 +99,15 @@ def get_products(
         colors = COLOR_GROUPS.get(color, [color])
         colors = _expand_colors(colors)
         colors = list(set(colors + [color]))
-        placeholders = " OR ".join(["s.color LIKE ?" for _ in colors])
+        terms = []
+        for c in colors:
+            terms.append(f"%{c}%")
+            cap = c[0].upper() + c[1:]
+            if cap != c:
+                terms.append(f"%{cap}%")
+        placeholders = " OR ".join(["(s.color LIKE ? OR p.name LIKE ?)" for _ in terms])
         query += f" AND ({placeholders})"
-        params.extend([f"%{c}%" for c in colors])
+        params.extend([t for t in terms for _ in (0, 1)])
 
     query += " LIMIT ?"
     params.append(limit)
