@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>midi_assistant — консультант по напольным покрытиям</title>
+<title>Консультант по напольным покрытиям</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -65,8 +65,7 @@
   <div class="chat-header">
     <div class="status"></div>
     <div>
-      <h1>midi_assistant</h1>
-      <p>AI-консультант по напольным покрытиям</p>
+      <h1>Консультант по напольным покрытиям</h1>
     </div>
   </div>
   <div class="messages" id="messages">
@@ -129,7 +128,7 @@ async function sendMessage() {
   setLoading(true);
 
   try {
-    const res = await fetch('/chat', {
+    const res = await fetch('chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: USER_ID, message: text }),

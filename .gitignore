@@ -1,4 +1,13 @@
 *.db
+
+# Клиентские данные и генерируемые файлы
+clients/*/products.db
+clients/*/catalog.csv
+clients/*/catalog.xlsx
+clients/*/stock.xlsx
+
+# local git worktrees
+.worktrees/
 logs/
 
 # Claude Code local (personal) settings

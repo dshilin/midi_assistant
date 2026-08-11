@@ -7,15 +7,22 @@ from aiogram.types import Message
 from dotenv import load_dotenv
 from loguru import logger
 
+from app import clients
 from app.agent_fsm import run_fsm_agent
 
 
-def get_telegram_token() -> str:
+def get_telegram_token(slug: str = "midi") -> str:
     load_dotenv()
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    cfg = clients.get_client(slug)
+    token = (cfg or {}).get("bot_token") or os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is required")
     return token
+
+
+def client_slug_for(message: Message) -> str:
+    bot = getattr(message, "bot", None)
+    return getattr(bot, "client_slug", "midi")
 
 
 async def handle_start(message: Message) -> None:
@@ -30,11 +37,12 @@ async def handle_text(message: Message) -> None:
         await message.answer("Пока я понимаю только текстовые сообщения.")
         return
 
-    user_id = f"tg:{message.from_user.id}"
-    logger.info("telegram message user={} msg_preview={}...", user_id, message.text[:60])
+    slug = client_slug_for(message)
+    user_id = f"tg:{slug}:{message.from_user.id}"
+    logger.info("telegram client={} user={} msg_preview={}...", slug, user_id, message.text[:60])
 
     try:
-        response, state = await run_fsm_agent(user_id, message.text)
+        response, state = await run_fsm_agent(user_id, message.text, client_slug=slug)
     except Exception:
         logger.exception("telegram handler failed user={}", user_id)
         await message.answer("Извините, произошла ошибка. Попробуйте ещё раз.")
@@ -52,11 +60,26 @@ def build_dispatcher() -> Dispatcher:
     return dp
 
 
+def build_bots() -> list[Bot]:
+    bots = []
+    for slug in clients.list_clients():
+        try:
+            token = get_telegram_token(slug)
+        except RuntimeError:
+            continue
+        bot = Bot(token)
+        bot.client_slug = slug
+        bots.append(bot)
+    if not bots:
+        raise RuntimeError("нет ни одного клиента с bot_token")
+    return bots
+
+
 async def main() -> None:
-    bot = Bot(get_telegram_token())
+    bots = build_bots()
     dp = build_dispatcher()
-    logger.info("starting telegram bot polling")
-    await dp.start_polling(bot)
+    logger.info("starting telegram bot polling for {} clients", len(bots))
+    await asyncio.gather(*(dp.start_polling(bot) for bot in bots))
 
 
 if __name__ == "__main__":

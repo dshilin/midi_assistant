@@ -5,13 +5,13 @@
 Три слоя: LLM (мышление) → FSM (контроль сценария) → State (память).
 
 ```
-Пользователь → HTML-форма → FastAPI (/chat)
+Пользователь → HTML-форма → FastAPI (/{slug}/chat)
                                     ↓
-                            agent_fsm.py
+                             agent_fsm.py (client_slug)
                            ┌────┬────┬────┐
                            │    │    │    │
                           ↓     ↓    ↓    ↓
-                     state  fsm  extractor  db
+                     state  fsm  extractor  db(client db_path)
                                       ↓
                                    LLM провайдер
                                    (.env)
@@ -22,8 +22,12 @@
 ```
 app/
 ├── __init__.py
-├── main.py                   # FastAPI: GET /, POST /chat
+├── main.py                   # FastAPI: GET /{slug}, POST /{slug}/chat (+ legacy /chat)
 ├── agent_fsm.py              # FSM orchestrator
+├── clients.py                # Реестр clients/<slug>/config.toml
+├── catalog.py                # Чтение catalog.csv/xlsx по алиасам шапки
+├── xlsx.py                   # Чтение первого листа .xlsx stdlib'ом
+├── ingest.py                 # Загрузка каталога + остатков клиента
 ├── state.py                  # User state (in-memory)
 ├── fsm.py                    # FSM stage transitions
 ├── extractor.py              # Entity extraction via LLM
@@ -31,13 +35,16 @@ app/
 ├── prompts.py                # Dynamic system prompt
 ├── db.py                     # SQLite queries
 ├── parse_products_gpt.py     # Product name parser (YandexGPT)
-├── scrape_products.py        # Web scraper
 └── migrate_color.py          # One-time color inference script
+clients/
+└── midi/
+    ├── config.toml           # Конфиг клиента
+    └── scrape.py             # Скрейп midiltd.ru → catalog.csv
 tests/
 ├── test_fsm.py               # State, FSM, prompts tests
 ├── test_llm.py               # LLM client tests
 └── test_parse_products.py    # Parser + DB tests
-static/chat.html              # Web chat UI
+static/chat.html              # Web chat UI (relative fetch 'chat')
 docs/
 ├── superpowers/specs/        # Design specs
 ├── superpowers/plans/        # Implementation plans
@@ -96,6 +103,20 @@ CREATE TABLE floor_covering_specs (
     FOREIGN KEY (product_id) REFERENCES products(id)
 );
 ```
+
+## Клиенты и загрузка
+
+- Клиент = `clients/<slug>/config.toml` + своя БД `clients/<slug>/products.db`.
+- `app.clients.get_db_path(slug)` — единственный способ получить путь к БД клиента.
+- Каталог загружается из `clients/<slug>/catalog.csv` или `catalog.xlsx`; колонки
+  распознаются по шапке: артикул/код/sku/article, наименование/название/name,
+  цена/price/стоимость, ссылка/url.
+- Остатки загружаются из `clients/<slug>/stock.xlsx`; по умолчанию A/C/G/K, можно
+  переопределить в секции `[stock]` config.toml.
+- Полная загрузка: `python -m app.ingest <slug>`; без GPT-разбора:
+  `python -m app.ingest <slug> --no-parse`.
+- Скрейперы не часть ядра: под конкретный сайт лежат в `clients/<slug>/scrape.py`
+  и только производят `catalog.csv`.
 
 ## Color Groups (Синонимы цветов)
 
@@ -172,13 +193,17 @@ def _clean(val):
 # Server
 uvicorn app.main:app --reload
 
+# Client ingestion
+python -m app.ingest midi --no-parse
+python -m app.ingest midi
+
 # Parser (требует YC_API_KEY, YC_FOLDER_ID)
 python -m app.parse_products_gpt            # все продукты
 python -m app.parse_products_gpt --id 70     # один
 python -m app.parse_products_gpt --ids 70,71,72  # несколько
 
-# Scraper
-python -m app.scrape_products
+# MIDI scraper
+python clients/midi/scrape.py
 
 # Tests
 python -m pytest tests/

@@ -81,6 +81,19 @@ def test_get_products_returns_only_positive_stock(tmp_path, monkeypatch):
     assert products[0]["stock_quantity"] == 5
 
 
+def test_get_products_without_stock_returns_all_catalog(tmp_path, monkeypatch):
+    db_path = tmp_path / "products.db"
+    _setup_db(db_path)
+    monkeypatch.setattr(db, "DB_PATH", str(db_path))
+
+    products = db.get_products(product_type="ламинат", limit=10, use_stock=False)
+
+    assert sorted(p["id"] for p in products) == [1, 2, 3, 4, 5]
+    assert all(p["stock_quantity"] == 1 for p in products)
+    assert db.get_product_by_id(3, use_stock=False)["stock_quantity"] == 1
+    assert db.get_product_by_id(3, use_stock=True) is None
+
+
 def test_get_product_by_id_requires_positive_stock(tmp_path, monkeypatch):
     db_path = tmp_path / "products.db"
     _setup_db(db_path)
@@ -91,3 +104,18 @@ def test_get_product_by_id_requires_positive_stock(tmp_path, monkeypatch):
     assert db.get_product_by_id(3) is None
     assert db.get_product_by_id(4) is None
     assert db.get_product_by_id(5) is None
+
+
+def test_db_path_isolation(tmp_path):
+    db_a = tmp_path / "a.db"
+    db_b = tmp_path / "b.db"
+    _setup_db(db_a)
+    _setup_db(db_b)
+
+    pa = db.get_products(product_type="ламинат", db_path=str(db_a), limit=10)
+    pb = db.get_products(product_type="ламинат", db_path=str(db_b), limit=10)
+
+    assert [p["id"] for p in pa] == [p["id"] for p in pb] == [1]
+    assert db.get_product_by_id(1, db_path=str(db_a))["stock_quantity"] == 5
+    db_b.unlink()
+    assert db.get_product_by_id(1, db_path=str(db_a)) is not None

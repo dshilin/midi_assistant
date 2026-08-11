@@ -1,0 +1,6 @@
+name = "Egger"
+slug = "egger"
+bot_token = ""
+site_url = "https://egger-laminate.ru"
+
+use_stock = false
